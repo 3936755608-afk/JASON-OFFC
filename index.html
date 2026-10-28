@@ -498,10 +498,10 @@ function renderStart(){
 }
 async function buildDay(rows){
   const day=$("day").value,t0=Date.now();
-  const seen=new Set(),list=[];
+  const seen=new Set(records.map(r=>r.m+"|"+r.L+"|"+r.w+"|"+r.s)),list=[];
   rows.forEach(r=>{const k=r.m+"|"+r.L+"|"+r.w+"|"+r.s;if(seen.has(k))return;seen.add(k);list.push(r)});
   await S.addMany(list.map((r,i)=>({d:day,m:r.m,L:r.L,w:r.w,s:r.s||"已入库",q:null,pq:(r.q>0?r.q:null),n:"",p:"",t:t0+i})));
-  await loadDay();say(`已排好 ${list.length} 个型号，开始逐个填支数。`);openQuick();
+  await loadDay();say(list.length?`已排好 ${list.length} 个型号，开始逐个填支数。`:"清单里的型号今天都已经有了。");if(list.length)openQuick();
 }
 $("list").addEventListener("click",async e=>{
   if(e.target.id==="tplLast"&&lastDayInfo){e.target.disabled=true;await buildDay(lastDayInfo.rows)}
@@ -509,13 +509,17 @@ $("list").addEventListener("click",async e=>{
 });
 function renderPend(){
   const n=records.filter(r=>r.q==null).length,box=$("pend");
-  if(!n){box.hidden=true;pendArm=false;return}
+  if(!records.length){box.hidden=true;return}
+  if(!n){box.hidden=false;pendArm=false;
+    box.innerHTML=`${lastDayInfo?`<button type="button" class="btn" id="tplLast2">按 ${esc(lastDayInfo.d)} 的型号补齐</button>`:""}<button type="button" class="btn" id="tplBase2">按标准清单补齐型号，快速填数</button>`;return}
   box.hidden=false;
   box.innerHTML=pendArm?`<span>确定删除 ${n} 个还没填支数的型号？</span><button type="button" class="btn danger" id="pendYes">删除</button><button type="button" class="btn" id="pendNo">取消</button>`
     :`<button type="button" class="btn primary" id="pendGo">快速填数（还剩 ${n} 个）</button><button type="button" class="btn" id="pendDel">删除未填的 ${n} 个</button>`;
 }
 $("pend").addEventListener("click",async e=>{
   if(e.target.id==="pendGo")openQuick();
+  if(e.target.id==="tplLast2"&&lastDayInfo){e.target.disabled=true;await buildDay(lastDayInfo.rows)}
+  if(e.target.id==="tplBase2"){e.target.disabled=true;await buildDay(window.BASE_TEMPLATE||[])}
   if(e.target.id==="pendDel"){pendArm=true;renderPend()}
   if(e.target.id==="pendNo"){pendArm=false;renderPend()}
   if(e.target.id==="pendYes"){pendArm=false;await S.delMany(records.filter(r=>r.q==null).map(r=>r.id));closeQuick();await loadDay();say("已删除未填的型号。")}
