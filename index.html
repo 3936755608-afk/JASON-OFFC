@@ -171,7 +171,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
       <label for="day" class="sub">盘点日期</label>
       <input type="date" id="day">
     </div>
-    <button class="btn primary" id="exportBtn" type="button">导出 Excel</button>
+    <button class="btn primary" id="quickTop" type="button">快速填数</button>
+    <button class="btn" id="exportBtn" type="button">导出 Excel</button>
     <div class="sync ok" id="sync"><i></i><span>本机保存</span></div>
   </header>
   <div class="banner" id="banner" hidden></div>
@@ -528,6 +529,13 @@ const _loadDay=loadDay;
 loadDay=async function(){lastDayInfo=await findLastDay();await _loadDay()};
 
 /* ---------- quick fill with big keypad ---------- */
+$("quickTop").addEventListener("click",async()=>{
+  const b=$("quickTop");
+  if(records.some(r=>r.q==null)){openQuick();return}
+  b.disabled=true;
+  try{await buildDay(lastDayInfo?lastDayInfo.rows:(window.BASE_TEMPLATE||[]))}finally{b.disabled=false}
+  $("quick").scrollIntoView({block:"start",behavior:"smooth"});
+});
 let qkId=null,qkVal="",qkS="已入库";
 function qkMsg(t,err){$("qkMsg").textContent=t||"";$("qkMsg").className="msg"+(err?" err":"")}
 function openQuick(id){
