@@ -68,6 +68,14 @@ header.top .sub{color:var(--muted);font-size:13px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
 .leftcol{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);min-width:0;display:flex;flex-direction:column;gap:12px}
 .entry{display:flex;flex-direction:column;gap:12px}
+.qk-search{display:flex;flex-direction:column;gap:6px}
+.qk-search input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;min-height:46px;width:100%;font-family:var(--f-data);font-size:17px;text-transform:uppercase}
+.qk-res{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-height:260px;overflow-y:auto}
+.qk-res button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:0;border-bottom:1px solid var(--soft);background:var(--panel);padding:8px 12px;min-height:48px}
+.qk-res button:last-child{border-bottom:0}
+.qk-res .m{font-family:var(--f-data);font-weight:700;font-size:17px}
+.qk-res .st{font-size:13px;color:var(--muted);white-space:nowrap}
+.qk-res .add{color:var(--accent);font-weight:700}
 .qk-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .qk-pos{font-family:var(--f-data);color:var(--muted);font-size:14px}
 .qk-model{font-family:var(--f-data);font-size:32px;font-weight:700;line-height:1.15;overflow-wrap:anywhere}
@@ -195,6 +203,10 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     <div class="leftcol">
     <section class="panel entry" id="quick" hidden aria-label="快速填数">
       <div class="qk-head"><span class="qk-pos" id="qkPos"></span><button type="button" class="btn" id="qkExit">退出快速填数</button></div>
+      <div class="qk-search">
+        <input id="qkQ" placeholder="🔍 搜型号，跳过去填" spellcheck="false" autocapitalize="characters" autocomplete="off">
+        <div class="qk-res" id="qkRes" hidden></div>
+      </div>
       <div><div class="qk-model" id="qkModel"></div><div class="qk-spec" id="qkSpec"></div><div class="qk-prev" id="qkPrev"></div></div>
       <div class="seg" id="qkSeg">
         <button type="button" class="in" data-s="已入库" aria-pressed="false">已入库</button>
@@ -613,7 +625,29 @@ $("qkOk").addEventListener("click",async()=>{
 $("qkSkip").addEventListener("click",()=>{const nx=nextId(qkId,false);if(!nx){qkMsg("已经是最后一个了。");return}openQuick(nx);qkMsg("")});
 $("qkPrevBtn").addEventListener("click",()=>{const i=records.findIndex(x=>x.id===qkId);if(i>0){openQuick(records[i-1].id);qkMsg("")}});
 $("qkExit").addEventListener("click",closeQuick);
-document.addEventListener("keydown",e=>{if($("quick").hidden)return;
+function qkSearch(){
+  const k=norm($("qkQ").value),box=$("qkRes");
+  if(!k){box.hidden=true;box.innerHTML="";return}
+  const score=m=>{const n=norm(m);return n===k?0:n.startsWith(k)?1:2};
+  const mine=records.filter(r=>norm(r.m).includes(k)).sort((a,b)=>score(a.m)-score(b.m)).slice(0,8);
+  const have=new Set(records.map(r=>r.m+"|"+r.L+"|"+r.w));
+  const more=catalog.filter(c=>norm(c.m).includes(k)&&!have.has(c.m+"|"+c.L+"|"+c.w)).sort((a,b)=>score(a.m)-score(b.m)||a.m.localeCompare(b.m)).slice(0,8);
+  const tag=(L,w)=>`<span class="tL">${L}米</span> <span class="tW">${w}</span>`;
+  let h=mine.map(r=>`<button type="button" data-go="${r.id}"><span><span class="m">${esc(r.m)}</span> ${tag(r.L,r.w)}</span><span class="st">${r.q==null?"待填":fmt0(r.q)+" 支"} · ${esc(r.s)}</span></button>`).join("");
+  h+=more.map((c,i)=>`<button type="button" data-addm="${esc(c.m)}" data-l="${c.L}" data-w="${c.w}"><span><span class="m">${esc(c.m)}</span> ${tag(c.L,c.w)}</span><span class="st add">＋ 加入今天</span></button>`).join("");
+  if(!h)h=`<div class="empty" style="padding:12px">没找到“${esc(clean($("qkQ").value))}”。退出快速填数后，可以在新录表单里加新型号。</div>`;
+  box.hidden=false;box.innerHTML=h;
+}
+$("qkQ").addEventListener("input",qkSearch);
+$("qkRes").addEventListener("click",async e=>{
+  const go=e.target.closest("[data-go]");
+  if(go){$("qkQ").value="";qkSearch();$("qkQ").blur();openQuick(go.dataset.go);return}
+  const ad=e.target.closest("[data-addm]");
+  if(ad){ad.disabled=true;
+    const id=await S.add({d:$("day").value,m:ad.dataset.addm,L:parseFloat(ad.dataset.l),w:parseFloat(ad.dataset.w),s:qkS||"已入库",q:null,pq:null,n:"",p:"",t:Date.now()});
+    await _loadDay();$("qkQ").value="";qkSearch();$("qkQ").blur();openQuick(id);qkMsg("已加入今天的清单，请填支数。")}
+});
+document.addEventListener("keydown",e=>{if($("quick").hidden||e.target.id==="qkQ")return;
   if(/^[0-9]$/.test(e.key)){if(qkVal.length<6)qkVal=(qkVal==="0"?"":qkVal)+e.key;paintQuick();e.preventDefault()}
   else if(e.key==="Backspace"){qkVal=qkVal.slice(0,-1);paintQuick();e.preventDefault()}
   else if(e.key==="Enter"){$("qkOk").click();e.preventDefault()}});
