@@ -125,6 +125,12 @@ header.top .sub{color:var(--muted);font-size:13px}
 .tools input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px;min-width:0;flex:1 1 140px}
 .bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:14px}
 .list{display:flex;flex-direction:column}
+.item.selmode{grid-template-columns:34px 6px minmax(0,1fr) auto}
+.chk{width:28px;height:28px;border-radius:7px;border:2px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent-ink);cursor:pointer}
+.chk.on{background:var(--accent);border-color:var(--accent)}
+.item.picked{background:var(--soft)}
+.selbar{position:sticky;bottom:max(8px,env(safe-area-inset-bottom,0px));z-index:5;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.selbar b{font-family:var(--f-data)}
 .item{display:grid;grid-template-columns:6px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--soft)}
 .item:last-child{border-bottom:0}
 .item .bar{align-self:stretch;border-radius:3px}
@@ -245,9 +251,11 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
           <button type="button" data-f="刚生产" aria-pressed="false">刚生产</button>
         </div>
         <input id="q" placeholder="搜型号" spellcheck="false" autocapitalize="characters">
+        <button type="button" class="btn" id="selBtn">多选</button>
       </div>
       <div class="bulk" id="pend" hidden></div>
       <div class="bulk" id="bulk" hidden></div>
+      <div class="selbar" id="selbar" hidden></div>
       <div class="list" id="list"><div class="empty">正在读取记录…</div></div>
     </section>
   </div>
@@ -393,7 +401,29 @@ function renderTotals(){
   const card=(cls,lab,a)=>`<div class="tcard ${cls}"><div class="lab"><span>${lab}</span><span class="num">${a.n} 行</span></div><div class="big">${fmt0(a.q)}<span style="font-size:13px"> 支</span></div><div class="sm">${fmt1(a.kg)} kg</div></div>`;
   $("totals").innerHTML=card("in","已入库",agg["已入库"])+card("pk","包装中",agg["包装中"])+card("nw","刚生产",agg["刚生产"])+card("","合计",all);
 }
+let selMode=false,sel=new Set(),selArm=false;
+function renderSel(){
+  const bar=$("selbar");$("selBtn").textContent=selMode?"完成":"多选";$("selBtn").classList.toggle("primary",selMode);
+  if(!selMode){bar.hidden=true;return}
+  bar.hidden=false;const n=sel.size,vis=visible().length;
+  bar.innerHTML=selArm?`<span>确定删除选中的 <b>${n}</b> 行？删除后不能恢复。</span><button type="button" class="btn danger" data-sa="delYes">删除</button><button type="button" class="btn" data-sa="delNo">取消</button>`
+   :`<span>已选 <b>${n}</b> 行</span>
+     <button type="button" class="btn" data-sa="all">${vis&&visible().every(r=>sel.has(r.id))?"取消全选":"全选"}（${vis}）</button>
+     <button type="button" class="btn danger" data-sa="del"${n?"":" disabled"}>删除</button>
+     <button type="button" class="btn" data-sa="s:已入库"${n?"":" disabled"}>改为已入库</button>
+     <button type="button" class="btn" data-sa="s:包装中"${n?"":" disabled"}>改为包装中</button>
+     <button type="button" class="btn" data-sa="s:刚生产"${n?"":" disabled"}>改为刚生产</button>`;
+}
+$("selBtn").addEventListener("click",()=>{selMode=!selMode;sel.clear();selArm=false;if(selMode&&qkId)closeQuick();renderList()});
+$("selbar").addEventListener("click",async e=>{const b=e.target.closest("[data-sa]");if(!b)return;const a=b.dataset.sa;
+  if(a==="all"){const v=visible();if(v.every(r=>sel.has(r.id)))v.forEach(r=>sel.delete(r.id));else v.forEach(r=>sel.add(r.id));renderList();return}
+  if(a==="del"){selArm=true;renderSel();return}
+  if(a==="delNo"){selArm=false;renderSel();return}
+  if(a==="delYes"){const ids=[...sel];await S.delMany(ids);sel.clear();selArm=false;await loadDay();say(`已删除 ${ids.length} 行。`);return}
+  if(a.startsWith("s:")){const st=a.slice(2),ids=[...sel];for(const id of ids)await S.update(id,{s:st});await loadDay();say(`已把 ${ids.length} 行改为${st}。`)}
+});
 function renderList(){
+  renderSel();
   const v=visible();
   $("listCount").textContent=v.length+" / "+records.length+" 行";
   const isToday=$("day").value===today();
@@ -402,7 +432,7 @@ function renderList(){
   if(!records.length){renderStart();$("bulk").hidden=true;return}
   if(!v.length){$("list").innerHTML=`<div class="empty">没有符合筛选条件的记录。</div>`}
   else $("list").innerHTML=v.map(r=>{const kg=r.q>0?r.w/6*r.L*r.q:0,c=CLS[r.s]||"nw",pend=r.q==null;
-    return `<div class="item ${c}${qkId===r.id?" cur":""}" data-id="${r.id}"><div class="bar"></div>
+    return `<div class="item ${c}${qkId===r.id?" cur":""}${selMode?" selmode":""}${sel.has(r.id)?" picked":""}" data-id="${r.id}">${selMode?`<span class="chk${sel.has(r.id)?" on":""}" data-pick="${r.id}" role="checkbox" aria-checked="${sel.has(r.id)}" tabindex="0">${sel.has(r.id)?"✓":""}</span>`:""}<div class="bar"></div>
       <div class="main" data-edit="${r.id}" role="button" tabindex="0" aria-label="修改 ${esc(r.m)}">
         <div class="l1"><span class="mm">${esc(r.m)}</span>${pend?`<span class="q pend">待填${r.pq!=null?" · 上次 "+fmt0(r.pq):""}</span>`:`<span class="q">${fmt0(r.q)} 支</span>`}</div>
         <div class="l2">${r.L}米 · 支重 ${r.w} · 实际 ${(r.w/6*r.L).toFixed(4)}${pend?"":" · "+fmt1(kg)+" kg"}${r.p?" · "+esc(r.p):""}</div>
@@ -420,9 +450,10 @@ function render(){renderTotals();renderList();update()}
 $("list").addEventListener("click",async e=>{
   const mv=e.target.closest("[data-in]");
   if(mv){mv.disabled=true;try{await S.update(mv.dataset.in,{s:"已入库"});await loadDay()}catch(err){mv.disabled=false;say("改状态失败，请再点一次。",true)}return}
+  if(selMode){const it=e.target.closest(".item");if(it&&!e.target.closest("[data-in]")){const id=it.dataset.id;sel.has(id)?sel.delete(id):sel.add(id);renderList()}return}
   const ed=e.target.closest("[data-edit]");if(ed){const r=records.find(x=>x.id===ed.dataset.edit);if(r){if(qkId||r.q==null)openQuick(r.id);else startEdit(r)}}
 });
-$("list").addEventListener("keydown",e=>{if(e.key==="Enter"){const ed=e.target.closest("[data-edit]");if(ed)ed.click()}});
+$("list").addEventListener("keydown",e=>{if(selMode&&(e.key===" "||e.key==="Enter")){const p=e.target.closest("[data-pick]");if(p){p.click();e.preventDefault();return}}if(e.key==="Enter"){const ed=e.target.closest("[data-edit]");if(ed)ed.click()}});
 $("bulk").addEventListener("click",async e=>{
   if(e.target.id==="bulkGo"){bulkArm=true;renderList();return}
   if(e.target.id==="bulkNo"){bulkArm=false;renderList();return}
