@@ -6,6 +6,10 @@
 <meta name="theme-color" content="#7a3e1f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="出货分配">
 <title>出货分配</title>
 <style>
 /* Layout: desktop allocation desk. Top = stock table (search + click to allocate) beside the allocation slip; bottom = today's allocations beside plant/customer totals. */
@@ -73,7 +77,9 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;font-family:var(
 .grid .tl{text-align:left}
 .grid td.m{font-weight:700}
 .grid td.L{color:var(--len);font-weight:700}.grid td.w{color:var(--wt);font-weight:700}
-.grid td.rem{font-weight:700}
+.grid td.rem{font-weight:700;font-size:15px}
+.grid .sk{position:sticky;left:0;z-index:1;box-shadow:2px 0 0 var(--line)}
+.grid th.sk{z-index:3}.grid tfoot td.sk{z-index:3}
 .grid tbody tr{cursor:pointer}
 .grid tbody tr:hover td{background:var(--soft)}
 .grid tr.part td{background:var(--part-bg)}
@@ -125,7 +131,12 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .more{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 
 @media (max-width:1050px){.row{grid-template-columns:minmax(0,1fr)}.slip{position:static}.dgrid{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:620px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:620px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stat .big{font-size:18px}
+  header.top .btn{flex:1 1 auto}
+  .tblwrap{max-height:48vh}
+  .grid th,.grid td{height:42px}
+  .pick .m{font-size:22px}}
+@media (pointer:coarse){.btn{min-height:44px}.field input,.field select{min-height:46px;font-size:16px}.tools input[type=search]{font-size:17px}.combo .list button{min-height:44px}}
 </style>
 </head>
 <body>
@@ -299,15 +310,16 @@ function renderStock(){
   let tq=0,ta=0,tl=0,tkg=0;
   const body=rows.map(r=>{tq+=r.q;ta+=r.a;tl+=r.left;tkg+=kgOf(r.w,r.L,r.left);
     const cls=r.left<=0?"full":r.a>0?"part":"";
-    return `<tr class="${cls}${picked===r.id?" picked":""}" data-sid="${r.id}"><td class="m tl">${esc(r.m)}</td><td class="L">${r.L}</td><td class="w">${r.w}</td><td>${(r.w/6*r.L).toFixed(4)}</td><td>${fmt0(r.q)}</td><td>${r.a?fmt0(r.a):""}</td><td class="rem">${fmt0(r.left)}</td><td>${fmt1(kgOf(r.w,r.L,r.left))}</td></tr>`}).join("");
-  wrap.innerHTML=`<table class="grid"><thead><tr><th class="tl">型号</th><th>长度(米)</th><th>理论支重</th><th>实际支重</th><th>库存(支)</th><th>已分(支)</th><th>剩余(支)</th><th>剩余重量(kg)</th></tr></thead><tbody>${body}</tbody>
-    <tfoot><tr><td class="tl">合计 ${rows.length} 行</td><td></td><td></td><td></td><td>${fmt0(tq)}</td><td>${fmt0(ta)}</td><td>${fmt0(tl)}</td><td>${fmt1(tkg)}</td></tr></tfoot></table>`;
+    return `<tr class="${cls}${picked===r.id?" picked":""}" data-sid="${r.id}"><td class="m tl sk">${esc(r.m)}</td><td class="L">${r.L}</td><td class="w">${r.w}</td><td class="rem">${fmt0(r.left)}</td><td>${fmt0(r.q)}</td><td>${r.a?fmt0(r.a):""}</td><td>${fmt1(kgOf(r.w,r.L,r.left))}</td><td>${(r.w/6*r.L).toFixed(4)}</td></tr>`}).join("");
+  wrap.innerHTML=`<table class="grid"><thead><tr><th class="tl sk">型号</th><th>长度(米)</th><th>理论支重</th><th>剩余(支)</th><th>库存(支)</th><th>已分(支)</th><th>剩余重量(kg)</th><th>实际支重</th></tr></thead><tbody>${body}</tbody>
+    <tfoot><tr><td class="tl sk">合计 ${rows.length} 行</td><td></td><td></td><td>${fmt0(tl)}</td><td>${fmt0(tq)}</td><td>${fmt0(ta)}</td><td>${fmt1(tkg)}</td><td></td></tr></tfoot></table>`;
   wrap.scrollTop=st;
 }
 $("q").addEventListener("input",()=>{renderStock();const rows=stockRows();if(rows.length===1&&picked!==rows[0].id){picked=rows[0].id;renderStock();renderPick()}});
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){const rows=stockRows();if(rows.length){picked=rows[0].id;renderStock();renderPick();$("cust").focus()}}});
 $("onlyLeft").addEventListener("change",renderStock);
 $("stockWrap").addEventListener("click",e=>{const tr=e.target.closest("tr[data-sid]");if(!tr)return;picked=tr.dataset.sid;renderStock();renderPick();
+  if(window.matchMedia("(max-width:1050px)").matches)$("pick").scrollIntoView({block:"start",behavior:"smooth"});
   if(!$("cust").value)$("cust").focus();else $("aq").focus()});
 
 /* ---------- allocation slip ---------- */
@@ -371,7 +383,8 @@ async function doAlloc(){
   $("aq").value="";$("an").value="";
   await loadAll();
   aSay(`已分配：${r.m} ${fmt0(q)} 支 → ${custName(cid)} / ${plantName(pid)}`);
-  $("q").focus();$("q").select();
+  if(window.matchMedia("(max-width:1050px)").matches)$("q").scrollIntoView({block:"start",behavior:"smooth"});
+  if(!("ontouchend" in document)){$("q").focus();$("q").select()}
 }
 $("aOk").addEventListener("click",doAlloc);
 $("aq").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doAlloc()}});
@@ -523,6 +536,8 @@ $("impOk").addEventListener("click",async()=>{
 
 /* ---------- export ---------- */
 async function shareFile(blob,name){
+  try{const file=new File([blob],name,{type:blob.type||"application/octet-stream"});
+    if(/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)&&"ontouchend" in document&&navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}catch(e){if(e&&e.name==="AbortError")return}
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
 }
