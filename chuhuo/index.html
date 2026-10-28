@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#7a3e1f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>出货分配</title>
+<style>
+/* Layout: desktop allocation desk. Top = stock table (search + click to allocate) beside the allocation slip; bottom = today's allocations beside plant/customer totals. */
+:root{
+  --bg:#f0eeeb; --panel:#ffffff; --ink:#1f1b18; --muted:#6b635c; --line:#d9d3cc; --soft:#ebe6e0;
+  --accent:#7a3e1f; --accent-ink:#ffffff; --danger:#b3261e; --ok:#2f6b2a; --ok-bg:#e2efda; --part-bg:#fff4cc; --zero:#a59c93;
+  --len:#5b2fa8; --len-bg:#ece4fb; --wt:#b3125c; --wt-bg:#fde3ef; --head:#305496; --head-ink:#ffffff; --foot:#d9e1f2; --foot-ink:#1b2328;
+  --f-body:"Microsoft YaHei","PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  --f-data:Consolas,"SF Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#171412; --panel:#211d1a; --ink:#eee8e2; --muted:#a89e95; --line:#3a332d; --soft:#2b2622;
+  --accent:#e0a07a; --accent-ink:#1d120b; --danger:#ff8a80; --ok:#b9dca4; --ok-bg:#24361c; --part-bg:#3d3313; --zero:#6e655d;
+  --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e; --head:#2b4a85; --head-ink:#ffffff; --foot:#2a3550; --foot-ink:#e6ecef;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171412; --panel:#211d1a; --ink:#eee8e2; --muted:#a89e95; --line:#3a332d; --soft:#2b2622;
+  --accent:#e0a07a; --accent-ink:#1d120b; --danger:#ff8a80; --ok:#b9dca4; --ok-bg:#24361c; --part-bg:#3d3313; --zero:#6e655d;
+  --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e; --head:#2b4a85; --head-ink:#ffffff; --foot:#2a3550; --foot-ink:#e6ecef;
+  color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+[hidden]{display:none!important}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 40px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.data{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.wrap{max-width:1600px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+header.top h1{font-size:22px;margin:0;letter-spacing:.02em}
+.sub{color:var(--muted);font-size:13px}
+.grow{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 14px;min-height:40px;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn:disabled{opacity:.5;cursor:default}
+.field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.field label{font-size:13px;color:var(--muted);font-weight:600}
+.field input,.field select,.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:42px;width:100%}
+.datebox{display:flex;align-items:center;gap:6px}
+.datebox input{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 10px;min-height:40px}
+.msg{font-size:14px;min-height:21px;color:var(--muted)}.msg.err{color:var(--danger)}
+.banner{background:var(--part-bg);border-radius:8px;padding:10px 14px;font-size:14px}
+
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:0}
+.stat .lab{font-size:13px;color:var(--muted)}
+.stat .big{font-family:var(--f-data);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .sm{font-family:var(--f-data);font-size:13px;color:var(--muted)}
+
+.row{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:12px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.panel h2{font-size:15px;margin:0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tools input[type=search],.tools select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;min-height:40px;min-width:0}
+.tools input[type=search]{flex:1 1 200px;font-family:var(--f-data);font-size:17px;text-transform:uppercase}
+.tools label.ck{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--muted)}
+
+.tblwrap{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:52vh}
+.tblwrap.low{max-height:42vh}
+table.grid{border-collapse:separate;border-spacing:0;width:100%;font-family:var(--f-data);font-size:14px;font-variant-numeric:tabular-nums}
+.grid th,.grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 8px;height:36px;white-space:nowrap;text-align:right;background:var(--panel)}
+.grid th{position:sticky;top:0;z-index:2;background:var(--head);color:var(--head-ink);font-family:var(--f-body);font-size:13px;font-weight:700;text-align:center}
+.grid .tl{text-align:left}
+.grid td.m{font-weight:700}
+.grid td.L{color:var(--len);font-weight:700}.grid td.w{color:var(--wt);font-weight:700}
+.grid td.rem{font-weight:700}
+.grid tbody tr{cursor:pointer}
+.grid tbody tr:hover td{background:var(--soft)}
+.grid tr.part td{background:var(--part-bg)}
+.grid tr.full td{color:var(--zero)}
+.grid tr.full td.L,.grid tr.full td.w{color:var(--zero)}
+.grid tr.picked td{box-shadow:inset 0 0 0 9999px rgba(122,62,31,.16)}
+.grid tfoot td{position:sticky;bottom:0;background:var(--foot);color:var(--foot-ink);font-weight:700}
+.grid td.act{text-align:center}
+.grid td.act button{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:2px 8px;min-height:28px;font-family:var(--f-body);font-size:12px}
+.grid td.act button.danger{color:var(--danger);border-color:var(--danger)}
+.grid td.q{cursor:text;font-weight:700}
+.grid td.q input{width:90px;height:30px;border:2px solid var(--accent);border-radius:6px;background:var(--panel);font:inherit;text-align:right;padding:0 6px}
+.empty{color:var(--muted);text-align:center;padding:28px 12px}
+
+.slip{position:sticky;top:12px}
+.pick{border:1px dashed var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:4px}
+.pick .m{font-family:var(--f-data);font-size:26px;font-weight:700;line-height:1.2}
+.tag{font-family:var(--f-data);font-weight:700;border-radius:6px;padding:1px 8px;display:inline-block;margin-right:6px}
+.tag.L{color:var(--len);background:var(--len-bg)}.tag.w{color:var(--wt);background:var(--wt-bg)}
+.pick .rem{font-family:var(--f-data);font-size:15px}
+.pick .rem b{font-size:20px}
+.combo{position:relative}
+.combo .list{position:absolute;left:0;right:0;top:100%;z-index:10;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);max-height:240px;overflow:auto}
+.combo .list button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--soft);background:var(--panel);padding:8px 10px}
+.combo .list button:hover,.combo .list button.hl{background:var(--soft)}
+.combo .list .new{color:var(--accent);font-weight:700}
+.qty input{font-family:var(--f-data);font-size:24px;font-weight:700}
+.quick{display:flex;gap:6px;flex-wrap:wrap}
+.quick button{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:2px 12px;min-height:32px;font-size:13px}
+.calc{font-size:14px;color:var(--muted);display:flex;justify-content:space-between;border-top:1px dashed var(--line);padding-top:8px}
+.calc b{font-family:var(--f-data);color:var(--ink)}
+
+.sumlist{display:flex;flex-direction:column}
+.sumrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;padding:6px 4px;border-bottom:1px solid var(--soft);align-items:baseline}
+.sumrow .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.sumrow .v{font-family:var(--f-data);text-align:right}
+.tabs{display:flex;gap:4px;background:var(--soft);border-radius:8px;padding:3px}
+.tabs button{border:0;background:transparent;border-radius:6px;padding:4px 12px;min-height:32px;font-size:14px}
+.tabs button[aria-pressed="true"]{background:var(--panel);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);width:min(820px,calc(100vw - 32px));max-height:86vh;padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.dlist{max-height:56vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.ditem{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid var(--soft);cursor:pointer}
+.ditem:hover,.ditem.on{background:var(--soft)}
+.ditem .sub{display:block}
+.foot{color:var(--muted);font-size:12px;text-align:center}
+.more{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+@media (max-width:1050px){.row{grid-template-columns:minmax(0,1fr)}.slip{position:static}.dgrid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:620px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div><h1>出货分配</h1><div class="sub">导入当天库存 → 搜型号 → 分给客户和加工厂 → 导出提货单</div></div>
+    <div class="grow"></div>
+    <div class="datebox"><label for="day" class="sub">日期</label><input type="date" id="day"></div>
+    <button class="btn primary" id="impBtn" type="button">导入当天库存</button>
+    <input type="file" id="impFile" accept=".xlsx,.json" hidden>
+    <button class="btn" id="dataBtn" type="button">客户 / 加工厂资料</button>
+    <button class="btn" id="slipBtn" type="button">导出提货单</button>
+    <button class="btn" id="sumBtn" type="button">导出当日总表</button>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <div class="msg" id="msg" role="status"></div>
+
+  <section class="stats" id="stats" aria-label="当日合计"></section>
+
+  <div class="row">
+    <section class="panel" aria-label="当日库存">
+      <h2><span>当日库存 <span class="sub" id="stockInfo"></span></span><span class="sub">点一行开始分配</span></h2>
+      <div class="tools">
+        <input type="search" id="q" placeholder="🔍 搜型号，例如 7801" spellcheck="false" autocomplete="off">
+        <label class="ck"><input type="checkbox" id="onlyLeft" checked> 只看有剩余的</label>
+      </div>
+      <div class="tblwrap" id="stockWrap"></div>
+    </section>
+
+    <section class="panel slip" aria-label="分配">
+      <h2>分配一笔</h2>
+      <div class="pick" id="pick"><div class="sub">在左边库存表里点一个型号。</div></div>
+      <div class="field combo"><label for="cust">客户</label><input id="cust" placeholder="输入客户名搜索" autocomplete="off"><div class="list" id="custList" hidden></div></div>
+      <div class="field combo"><label for="plant">加工厂（提货方）</label><input id="plant" placeholder="输入厂名搜索" autocomplete="off"><div class="list" id="plantList" hidden></div></div>
+      <div class="field qty"><label for="aq">分配支数</label><input id="aq" inputmode="numeric" autocomplete="off" placeholder="0"></div>
+      <div class="quick" id="quickQ"></div>
+      <div class="field"><label for="an">备注（可不填）</label><input id="an" autocomplete="off" placeholder="例如 订单号、颜色"></div>
+      <div class="calc"><span>重量 <b id="aKg">—</b> kg</span><span>分后剩余 <b id="aLeft">—</b> 支</span></div>
+      <button class="btn primary" id="aOk" type="button" style="min-height:48px;font-size:17px">确定分配（回车）</button>
+      <div class="msg" id="aMsg" role="status"></div>
+    </section>
+  </div>
+
+  <div class="row">
+    <section class="panel" aria-label="今日分配记录">
+      <h2><span>今日分配记录 <span class="sub" id="allocInfo"></span></span>
+        <span class="tools"><select id="fPlant" aria-label="按加工厂筛选"></select><select id="fCust" aria-label="按客户筛选"></select></span></h2>
+      <div class="tblwrap low" id="allocWrap"></div>
+      <div class="sub">点“支数”格可以直接改；改小、删除都会把支数还回库存。</div>
+    </section>
+    <section class="panel" aria-label="汇总">
+      <h2><span>汇总</span><span class="tabs" id="sumTabs"><button type="button" data-t="plant" aria-pressed="true">按加工厂</button><button type="button" data-t="cust" aria-pressed="false">按客户</button></span></h2>
+      <div class="sumlist" id="sumList"></div>
+    </section>
+  </div>
+
+  <div class="more">
+    <button class="btn" type="button" id="backupBtn">备份全部数据</button>
+    <button class="btn" type="button" id="restoreBtn">从备份恢复</button>
+    <input type="file" id="restoreFile" accept=".json" hidden>
+  </div>
+  <div class="foot">所有资料只保存在这台电脑的浏览器里，不会上传。建议每天导出总表，每周备份一次。</div>
+</div>
+
+<dialog id="dataDlg">
+  <h2 style="margin:0 0 10px;font-size:17px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <span class="tabs" id="dTabs"><button type="button" data-k="cust" aria-pressed="true">客户资料</button><button type="button" data-k="plant" aria-pressed="false">加工厂资料</button></span>
+    <button class="btn" type="button" id="dClose">关闭</button></h2>
+  <div class="dgrid">
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+      <input id="dQ" placeholder="搜索" style="border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;min-height:38px">
+      <div class="dlist" id="dList"></div>
+    </div>
+    <form id="dForm" style="display:flex;flex-direction:column;gap:8px" autocomplete="off">
+      <div class="sub" id="dMode">新建</div>
+      <div class="field"><label for="dName">名称 *</label><input id="dName" required></div>
+      <div class="field"><label for="dContact">联系人</label><input id="dContact"></div>
+      <div class="field"><label for="dPhone">电话</label><input id="dPhone"></div>
+      <div class="field" id="dAddrF"><label for="dAddr">地址</label><input id="dAddr"></div>
+      <div class="field" id="dPlantF"><label for="dPlant">常用加工厂</label><select id="dPlant"></select></div>
+      <div class="field"><label for="dNote">备注</label><input id="dNote"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="dSave">保存</button><button class="btn" type="button" id="dNew">新建</button><button class="btn danger" type="button" id="dDel" hidden>删除</button></div>
+      <div class="msg" id="dMsg"></div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="impDlg">
+  <h2 style="margin:0 0 8px;font-size:17px">导入当天库存</h2>
+  <div id="impBody"></div>
+  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn primary" type="button" id="impOk">导入</button><button class="btn" type="button" id="impCancel">取消</button></div>
+</dialog>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt0=n=>Number(n||0).toLocaleString("zh-CN",{maximumFractionDigits:0});
+const fmt1=n=>Number(n||0).toLocaleString("zh-CN",{minimumFractionDigits:1,maximumFractionDigits:1});
+const norm=s=>String(s||"").toUpperCase().replace(/[\s\-－_]/g,"");
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const key=(m,L,w)=>m+"|"+L+"|"+w;
+const kgOf=(w,L,q)=>w/6*L*q;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+function say(t,err){$("msg").textContent=t||"";$("msg").className="msg"+(err?" err":"")}
+function aSay(t,err){$("aMsg").textContent=t||"";$("aMsg").className="msg"+(err?" err":"")}
+
+/* ---------- storage (IndexedDB, this computer only) ---------- */
+const S=(()=>{let dbp=null;
+  const open=()=>dbp||(dbp=new Promise((ok,bad)=>{const r=indexedDB.open("chuhuo-fenpei",1);
+    r.onupgradeneeded=()=>{const d=r.result;
+      d.createObjectStore("stock",{keyPath:"id"}).createIndex("d","d");
+      d.createObjectStore("alloc",{keyPath:"id"}).createIndex("d","d");
+      d.createObjectStore("cust",{keyPath:"id"});d.createObjectStore("plant",{keyPath:"id"});d.createObjectStore("kv")};
+    r.onsuccess=()=>ok(r.result);r.onerror=()=>bad(r.error)}));
+  const run=async(store,mode,fn)=>{const d=await open();return new Promise((ok,bad)=>{const t=d.transaction(store,mode),st=t.objectStore(store);let out;const r=fn(st);if(r&&"onsuccess" in r)r.onsuccess=()=>{out=r.result};t.oncomplete=()=>ok(out);t.onerror=()=>bad(t.error);t.onabort=()=>bad(t.error)})};
+  return{
+    byDay:(store,d)=>run(store,"readonly",st=>st.index("d").getAll(d)),
+    all:store=>run(store,"readonly",st=>st.getAll()),
+    put:(store,v)=>run(store,"readwrite",st=>st.put(v)),
+    putMany:(store,vs)=>run(store,"readwrite",st=>{vs.forEach(v=>st.put(v))}),
+    del:(store,id)=>run(store,"readwrite",st=>st.delete(id)),
+    delMany:(store,ids)=>run(store,"readwrite",st=>{ids.forEach(id=>st.delete(id))}),
+    get:(store,id)=>run(store,"readonly",st=>st.get(id)),
+  };
+})();
+
+/* ---------- state ---------- */
+let stock=[],alloc=[],custs=[],plants=[],picked=null,editQ=null,sumTab="plant";
+let lastCust="",lastPlant="";
+$("day").value=today();
+try{lastCust=localStorage.getItem("ch_cust")||"";lastPlant=localStorage.getItem("ch_plant")||""}catch(e){}
+
+const allocated=k=>alloc.filter(a=>key(a.m,a.L,a.w)===k).reduce((s,a)=>s+a.q,0);
+const custName=id=>(custs.find(c=>c.id===id)||{}).name||"(已删除客户)";
+const plantName=id=>(plants.find(p=>p.id===id)||{}).name||"(已删除加工厂)";
+
+async function loadAll(){
+  try{
+    [stock,alloc,custs,plants]=await Promise.all([S.byDay("stock",$("day").value),S.byDay("alloc",$("day").value),S.all("cust"),S.all("plant")]);
+    stock.sort((a,b)=>a.o-b.o);alloc.sort((a,b)=>a.t-b.t);
+    custs.sort((a,b)=>a.name.localeCompare(b.name,"zh"));plants.sort((a,b)=>a.name.localeCompare(b.name,"zh"));
+  }catch(e){$("banner").hidden=false;$("banner").textContent="这台电脑的浏览器不能保存数据（可能是无痕模式）。请用普通模式打开。"}
+  if(picked&&!stock.some(s=>s.id===picked))picked=null;
+  render();
+}
+function render(){renderStats();renderStock();renderPick();renderAlloc();renderSum();renderFilters()}
+
+function renderStats(){
+  const tq=stock.reduce((s,x)=>s+x.q,0),tkg=stock.reduce((s,x)=>s+kgOf(x.w,x.L,x.q),0);
+  const aq=alloc.reduce((s,x)=>s+x.q,0),akg=alloc.reduce((s,x)=>s+kgOf(x.w,x.L,x.q),0);
+  const np=new Set(alloc.map(a=>a.plant)).size,nc=new Set(alloc.map(a=>a.cust)).size;
+  const card=(lab,big,sm)=>`<div class="stat"><div class="lab">${lab}</div><div class="big">${big}</div><div class="sm">${sm}</div></div>`;
+  $("stats").innerHTML=card("当日库存",fmt0(tq)+" 支",fmt1(tkg)+" kg · "+stock.length+" 个规格")
+    +card("已分配",fmt0(aq)+" 支",fmt1(akg)+" kg · "+alloc.length+" 笔")
+    +card("剩余可发",fmt0(tq-aq)+" 支",fmt1(tkg-akg)+" kg")
+    +card("涉及",np+" 个加工厂",nc+" 个客户");
+}
+
+function stockRows(){
+  const k=norm($("q").value),only=$("onlyLeft").checked;
+  return stock.map(s=>{const a=allocated(key(s.m,s.L,s.w));return Object.assign({},s,{a,left:s.q-a})})
+    .filter(s=>(!k||norm(s.m).includes(k))&&(!only||s.left>0||s.id===picked));
+}
+function renderStock(){
+  $("stockInfo").textContent=stock.length?`${stock.length} 个规格`:"";
+  if(!stock.length){$("stockWrap").innerHTML=`<div class="empty">这一天还没有库存。点右上角“导入当天库存”，选“车间盘点”导出的 Excel 或备份文件。</div>`;return}
+  const rows=stockRows();
+  const wrap=$("stockWrap"),st=wrap.querySelector(".grid")?wrap.scrollTop:0;
+  if(!rows.length){wrap.innerHTML=`<div class="empty">没有符合条件的型号。</div>`;return}
+  let tq=0,ta=0,tl=0,tkg=0;
+  const body=rows.map(r=>{tq+=r.q;ta+=r.a;tl+=r.left;tkg+=kgOf(r.w,r.L,r.left);
+    const cls=r.left<=0?"full":r.a>0?"part":"";
+    return `<tr class="${cls}${picked===r.id?" picked":""}" data-sid="${r.id}"><td class="m tl">${esc(r.m)}</td><td class="L">${r.L}</td><td class="w">${r.w}</td><td>${(r.w/6*r.L).toFixed(4)}</td><td>${fmt0(r.q)}</td><td>${r.a?fmt0(r.a):""}</td><td class="rem">${fmt0(r.left)}</td><td>${fmt1(kgOf(r.w,r.L,r.left))}</td></tr>`}).join("");
+  wrap.innerHTML=`<table class="grid"><thead><tr><th class="tl">型号</th><th>长度(米)</th><th>理论支重</th><th>实际支重</th><th>库存(支)</th><th>已分(支)</th><th>剩余(支)</th><th>剩余重量(kg)</th></tr></thead><tbody>${body}</tbody>
+    <tfoot><tr><td class="tl">合计 ${rows.length} 行</td><td></td><td></td><td></td><td>${fmt0(tq)}</td><td>${fmt0(ta)}</td><td>${fmt0(tl)}</td><td>${fmt1(tkg)}</td></tr></tfoot></table>`;
+  wrap.scrollTop=st;
+}
+$("q").addEventListener("input",()=>{renderStock();const rows=stockRows();if(rows.length===1&&picked!==rows[0].id){picked=rows[0].id;renderStock();renderPick()}});
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"){const rows=stockRows();if(rows.length){picked=rows[0].id;renderStock();renderPick();$("cust").focus()}}});
+$("onlyLeft").addEventListener("change",renderStock);
+$("stockWrap").addEventListener("click",e=>{const tr=e.target.closest("tr[data-sid]");if(!tr)return;picked=tr.dataset.sid;renderStock();renderPick();
+  if(!$("cust").value)$("cust").focus();else $("aq").focus()});
+
+/* ---------- allocation slip ---------- */
+function pickedRow(){const s=stock.find(x=>x.id===picked);if(!s)return null;const a=allocated(key(s.m,s.L,s.w));return Object.assign({},s,{a,left:s.q-a})}
+function renderPick(){
+  const r=pickedRow();
+  if(!r){$("pick").innerHTML=`<div class="sub">在左边库存表里点一个型号（或在搜索框输入后按回车）。</div>`;$("quickQ").innerHTML="";calcA();return}
+  $("pick").innerHTML=`<div class="m">${esc(r.m)}</div><div><span class="tag L">${r.L}米</span><span class="tag w">支重 ${r.w}</span></div><div class="rem">库存 ${fmt0(r.q)} · 已分 ${fmt0(r.a)} · 剩余 <b>${fmt0(r.left)}</b> 支</div>`;
+  $("quickQ").innerHTML=r.left>0?`<button type="button" data-qq="${r.left}">全部剩余 ${fmt0(r.left)}</button>`+[...new Set([Math.floor(r.left/2)])].filter(x=>x>0&&x<r.left).map(x=>`<button type="button" data-qq="${x}">一半 ${fmt0(x)}</button>`).join(""):"";
+  calcA();
+}
+$("quickQ").addEventListener("click",e=>{const b=e.target.closest("[data-qq]");if(!b)return;$("aq").value=b.dataset.qq;calcA();$("aq").focus()});
+function calcA(){
+  const r=pickedRow(),q=parseInt(String($("aq").value).replace(/[^\d]/g,""),10);
+  $("aKg").textContent=r&&q>0?fmt1(kgOf(r.w,r.L,q)):"—";
+  $("aLeft").textContent=r?fmt0(r.left-(q>0?q:0)):"—";
+  $("aLeft").style.color=r&&q>r.left?"var(--danger)":"";
+}
+$("aq").addEventListener("input",calcA);
+
+/* combo boxes for customer / plant */
+function combo(inputId,listId,getItems,onPick,onNew){
+  const inp=$(inputId),list=$(listId);let hl=0,items=[];
+  function show(){const k=norm(inp.value);items=getItems().filter(x=>!k||norm(x.name).includes(k)).slice(0,30);
+    const exact=getItems().some(x=>x.name===inp.value.trim());
+    let h=items.map((x,i)=>`<button type="button" data-id="${x.id}" class="${i===hl?"hl":""}">${esc(x.name)}${x.contact?` <span class="sub">${esc(x.contact)}</span>`:""}</button>`).join("");
+    if(inp.value.trim()&&!exact)h+=`<button type="button" data-new="1" class="new">＋ 新建“${esc(inp.value.trim())}”</button>`;
+    if(!h)h=`<div class="sub" style="padding:8px 10px">还没有资料，输入名称可以直接新建。</div>`;
+    list.innerHTML=h;list.hidden=false}
+  inp.addEventListener("focus",()=>{hl=0;show()});
+  inp.addEventListener("input",()=>{hl=0;inp.dataset.id="";show()});
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="ArrowDown"){hl=Math.min(hl+1,items.length-1);show();e.preventDefault()}
+    else if(e.key==="ArrowUp"){hl=Math.max(hl-1,0);show();e.preventDefault()}
+    else if(e.key==="Enter"){e.preventDefault();if(items[hl])choose(items[hl].id);else if(inp.value.trim())makeNew()}
+    else if(e.key==="Escape"){list.hidden=true}});
+  inp.addEventListener("blur",()=>setTimeout(()=>{list.hidden=true;const x=getItems().find(i=>i.name===inp.value.trim());inp.dataset.id=x?x.id:""},150));
+  list.addEventListener("mousedown",e=>e.preventDefault());
+  list.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;if(b.dataset.new)makeNew();else choose(b.dataset.id)});
+  function choose(id){const x=getItems().find(i=>i.id===id);if(!x)return;inp.value=x.name;inp.dataset.id=x.id;list.hidden=true;onPick(x)}
+  async function makeNew(){const x=await onNew(inp.value.trim());if(x)choose(x.id)}
+  return{set(id){const x=getItems().find(i=>i.id===id);inp.value=x?x.name:"";inp.dataset.id=x?x.id:""}};
+}
+const custBox=combo("cust","custList",()=>custs,c=>{if(c.plant&&plants.some(p=>p.id===c.plant))plantBox.set(c.plant);$("plant").focus()},
+  async name=>{const c={id:uid(),name,contact:"",phone:"",plant:"",note:""};await S.put("cust",c);custs.push(c);aSay(`已新建客户“${name}”，详细资料可以在“客户 / 加工厂资料”里补。`);return c});
+const plantBox=combo("plant","plantList",()=>plants,()=>{$("aq").focus()},
+  async name=>{const p={id:uid(),name,contact:"",phone:"",addr:"",note:""};await S.put("plant",p);plants.push(p);aSay(`已新建加工厂“${name}”。`);return p});
+
+async function doAlloc(){
+  const r=pickedRow();if(!r){aSay("先在库存表里点一个型号。",true);return}
+  const cid=$("cust").dataset.id||((custs.find(c=>c.name===$("cust").value.trim())||{}).id);
+  const pid=$("plant").dataset.id||((plants.find(p=>p.name===$("plant").value.trim())||{}).id);
+  if(!cid){aSay("请选客户（输入名称后从下拉里选，或新建）。",true);$("cust").focus();return}
+  if(!pid){aSay("请选加工厂。",true);$("plant").focus();return}
+  const q=parseInt(String($("aq").value).replace(/[^\d]/g,""),10);
+  if(!(q>0)){aSay("请填分配支数。",true);$("aq").focus();return}
+  if(q>r.left){aSay(`剩余只有 ${fmt0(r.left)} 支，不能分 ${fmt0(q)} 支。`,true);$("aq").focus();return}
+  const a={id:uid(),d:$("day").value,m:r.m,L:r.L,w:r.w,q,cust:cid,plant:pid,n:$("an").value.trim(),t:Date.now()};
+  try{await S.put("alloc",a)}catch(e){aSay("保存失败，请再点一次。",true);return}
+  lastCust=cid;lastPlant=pid;try{localStorage.setItem("ch_cust",cid);localStorage.setItem("ch_plant",pid)}catch(e){}
+  $("aq").value="";$("an").value="";
+  await loadAll();
+  aSay(`已分配：${r.m} ${fmt0(q)} 支 → ${custName(cid)} / ${plantName(pid)}`);
+  $("q").focus();$("q").select();
+}
+$("aOk").addEventListener("click",doAlloc);
+$("aq").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doAlloc()}});
+$("an").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doAlloc()}});
+
+/* ---------- allocations table ---------- */
+function renderFilters(){
+  const fp=$("fPlant").value,fc=$("fCust").value;
+  const ps=[...new Set(alloc.map(a=>a.plant))],cs=[...new Set(alloc.map(a=>a.cust))];
+  $("fPlant").innerHTML=`<option value="">全部加工厂</option>`+ps.map(id=>`<option value="${id}">${esc(plantName(id))}</option>`).join("");
+  $("fCust").innerHTML=`<option value="">全部客户</option>`+cs.map(id=>`<option value="${id}">${esc(custName(id))}</option>`).join("");
+  $("fPlant").value=ps.includes(fp)?fp:"";$("fCust").value=cs.includes(fc)?fc:"";
+}
+function allocRows(){const fp=$("fPlant").value,fc=$("fCust").value;return alloc.filter(a=>(!fp||a.plant===fp)&&(!fc||a.cust===fc))}
+function renderAlloc(){
+  const rows=allocRows();
+  $("allocInfo").textContent=alloc.length?`${alloc.length} 笔`:"";
+  if(!alloc.length){$("allocWrap").innerHTML=`<div class="empty">今天还没有分配。</div>`;return}
+  let tq=0,tkg=0;
+  const body=rows.map((a,i)=>{const kg=kgOf(a.w,a.L,a.q);tq+=a.q;tkg+=kg;
+    const qc=editQ===a.id?`<td class="q"><input id="cellQ" inputmode="numeric" value="${a.q}"></td>`:`<td class="q" data-eq="${a.id}" title="点击修改">${fmt0(a.q)}</td>`;
+    return `<tr data-aid="${a.id}"><td>${i+1}</td><td class="tl">${esc(custName(a.cust))}</td><td class="tl">${esc(plantName(a.plant))}</td><td class="m tl">${esc(a.m)}</td><td class="L">${a.L}</td><td class="w">${a.w}</td>${qc}<td>${fmt1(kg)}</td><td class="tl" style="font-family:var(--f-body)">${esc(a.n||"")}</td><td class="act"><button type="button" class="danger" data-del="${a.id}">删除</button></td></tr>`}).join("");
+  $("allocWrap").innerHTML=`<table class="grid"><thead><tr><th>序号</th><th class="tl">客户</th><th class="tl">加工厂</th><th class="tl">型号</th><th>长度(米)</th><th>理论支重</th><th>支数</th><th>重量(kg)</th><th class="tl">备注</th><th></th></tr></thead><tbody>${body}</tbody>
+    <tfoot><tr><td></td><td class="tl">合计 ${rows.length} 笔</td><td></td><td></td><td></td><td></td><td>${fmt0(tq)}</td><td>${fmt1(tkg)}</td><td></td><td></td></tr></tfoot></table>`;
+  const inp=$("cellQ");if(inp){inp.focus();inp.select()}
+}
+$("fPlant").addEventListener("change",renderAlloc);$("fCust").addEventListener("change",renderAlloc);
+let delArm=null;
+$("allocWrap").addEventListener("click",async e=>{
+  const d=e.target.closest("[data-del]");
+  if(d){const id=d.dataset.del;if(delArm!==id){delArm=id;d.textContent="确认删除";return}
+    delArm=null;await S.del("alloc",id);await loadAll();say("已删除这一笔，支数已还回库存。");return}
+  const eq=e.target.closest("[data-eq]");if(eq){editQ=eq.dataset.eq;renderAlloc()}
+});
+async function saveEditQ(){
+  const inp=$("cellQ");if(!inp||!editQ)return;const id=editQ;editQ=null;
+  const a=alloc.find(x=>x.id===id),q=parseInt(String(inp.value).replace(/[^\d]/g,""),10);
+  if(!a){renderAlloc();return}
+  const s=stock.find(x=>key(x.m,x.L,x.w)===key(a.m,a.L,a.w));
+  const maxQ=s?s.q-allocated(key(a.m,a.L,a.w))+a.q:a.q;
+  if(!(q>0)){say("支数要大于 0；不要这一笔就点“删除”。",true);renderAlloc();return}
+  if(q>maxQ){say(`这个型号最多还能分 ${fmt0(maxQ)} 支。`,true);renderAlloc();return}
+  if(q!==a.q){a.q=q;await S.put("alloc",a);say("已修改支数。")}
+  await loadAll();
+}
+document.addEventListener("keydown",e=>{if(e.target.id==="cellQ"){if(e.key==="Enter"){e.preventDefault();saveEditQ()}else if(e.key==="Escape"){editQ=null;renderAlloc()}}});
+document.addEventListener("focusout",e=>{if(e.target.id==="cellQ")setTimeout(saveEditQ,0)});
+
+/* ---------- summary ---------- */
+function renderSum(){
+  for(const b of $("sumTabs").children)b.setAttribute("aria-pressed",String(b.dataset.t===sumTab));
+  const g={};alloc.forEach(a=>{const k=sumTab==="plant"?a.plant:a.cust;(g[k]=g[k]||{q:0,kg:0,n:0});g[k].q+=a.q;g[k].kg+=kgOf(a.w,a.L,a.q);g[k].n++});
+  const ks=Object.keys(g).sort((x,y)=>g[y].kg-g[x].kg);
+  if(!ks.length){$("sumList").innerHTML=`<div class="empty">分配后这里会显示每个${sumTab==="plant"?"加工厂":"客户"}的合计。</div>`;return}
+  $("sumList").innerHTML=ks.map(k=>`<div class="sumrow"><span class="n">${esc(sumTab==="plant"?plantName(k):custName(k))} <span class="sub">${g[k].n} 笔</span></span><span class="v">${fmt0(g[k].q)} 支</span><span class="v">${fmt1(g[k].kg)} kg</span></div>`).join("");
+}
+$("sumTabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;sumTab=b.dataset.t;renderSum()});
+
+/* ---------- customers / plants dialog ---------- */
+let dKind="cust",dSel=null;
+function dItems(){return dKind==="cust"?custs:plants}
+function renderD(){
+  for(const b of $("dTabs").children)b.setAttribute("aria-pressed",String(b.dataset.k===dKind));
+  const k=norm($("dQ").value),its=dItems().filter(x=>!k||norm(x.name+x.contact+x.phone).includes(k));
+  $("dList").innerHTML=its.length?its.map(x=>`<div class="ditem${dSel===x.id?" on":""}" data-did="${x.id}"><span><b>${esc(x.name)}</b><span class="sub">${esc([x.contact,x.phone].filter(Boolean).join(" · "))}${dKind==="cust"&&x.plant?" · 常用："+esc(plantName(x.plant)):""}</span></span></div>`).join("")
+    :`<div class="empty">还没有${dKind==="cust"?"客户":"加工厂"}资料，在右边填好点“保存”。</div>`;
+  $("dAddrF").hidden=dKind!=="plant";$("dPlantF").hidden=dKind!=="cust";
+  $("dPlant").innerHTML=`<option value="">（不设）</option>`+plants.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+}
+function fillD(x){dSel=x?x.id:null;$("dMode").textContent=x?"修改":"新建";$("dName").value=x?x.name:"";$("dContact").value=x?x.contact||"":"";$("dPhone").value=x?x.phone||"":"";
+  $("dAddr").value=x?x.addr||"":"";$("dNote").value=x?x.note||"":"";renderD();$("dPlant").value=x&&x.plant?x.plant:"";$("dDel").hidden=!x;$("dDel").textContent="删除";$("dMsg").textContent=""}
+$("dataBtn").addEventListener("click",()=>{dKind="cust";$("dQ").value="";fillD(null);$("dataDlg").showModal()});
+$("dClose").addEventListener("click",()=>{$("dataDlg").close();loadAll()});
+$("dTabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;dKind=b.dataset.k;fillD(null)});
+$("dQ").addEventListener("input",renderD);
+$("dList").addEventListener("click",e=>{const it=e.target.closest("[data-did]");if(!it)return;fillD(dItems().find(x=>x.id===it.dataset.did))});
+$("dNew").addEventListener("click",()=>fillD(null));
+$("dForm").addEventListener("submit",async e=>{e.preventDefault();
+  const name=$("dName").value.trim();if(!name){$("dMsg").textContent="请填名称。";return}
+  if(dItems().some(x=>x.name===name&&x.id!==dSel)){$("dMsg").textContent="已经有同名的了。";return}
+  const x=Object.assign(dItems().find(i=>i.id===dSel)||{id:uid()},{name,contact:$("dContact").value.trim(),phone:$("dPhone").value.trim(),note:$("dNote").value.trim()});
+  if(dKind==="plant")x.addr=$("dAddr").value.trim();else x.plant=$("dPlant").value;
+  await S.put(dKind,x);
+  if(dKind==="cust"){custs=await S.all("cust");custs.sort((a,b)=>a.name.localeCompare(b.name,"zh"))}else{plants=await S.all("plant");plants.sort((a,b)=>a.name.localeCompare(b.name,"zh"))}
+  fillD(dItems().find(i=>i.id===x.id));$("dMsg").textContent="已保存。";
+});
+$("dDel").addEventListener("click",async()=>{if(!dSel)return;
+  if($("dDel").textContent==="删除"){$("dDel").textContent="再点一次确认删除";return}
+  await S.del(dKind,dSel);if(dKind==="cust")custs=custs.filter(x=>x.id!==dSel);else plants=plants.filter(x=>x.id!==dSel);fillD(null);$("dMsg").textContent="已删除。以前的分配记录会显示“已删除”。"});
+
+/* ---------- import stock ---------- */
+let pending=null;
+function loadExcelJS(){return new Promise((ok,bad)=>{if(window.ExcelJS)return ok(window.ExcelJS);const s=document.createElement("script");s.src="../exceljs.min.js";s.onload=()=>ok(window.ExcelJS);s.onerror=()=>bad(new Error("load"));document.head.appendChild(s)})}
+const cellVal=v=>v&&typeof v==="object"?("result" in v?v.result:("richText" in v?v.richText.map(t=>t.text).join(""):v.text??"")):v;
+async function parseXlsx(file){
+  const XL=await loadExcelJS();const wb=new XL.Workbook();await wb.xlsx.load(await file.arrayBuffer());
+  const ws=wb.getWorksheet("明细")||wb.worksheets[0];if(!ws)throw new Error("empty");
+  let hr=0,cols={};
+  for(let r=1;r<=Math.min(10,ws.rowCount)&&!hr;r++){const row=ws.getRow(r);const c={};
+    row.eachCell((cell,ci)=>{const t=String(cellVal(cell.value)||"");
+      if(/型号/.test(t))c.m=ci;else if(/长度/.test(t))c.L=ci;else if(/理论支重|支重|米重/.test(t)&&!/实际/.test(t))c.w=ci;else if(/^数量|支数/.test(t))c.q=ci;else if(/状态/.test(t))c.s=ci});
+    if(c.m&&c.L&&c.w&&c.q){hr=r;cols=c}}
+  if(!hr)throw new Error("cols");
+  const out=[];
+  for(let r=hr+1;r<=ws.rowCount;r++){const row=ws.getRow(r);const m=String(cellVal(row.getCell(cols.m).value)||"").trim().toUpperCase();
+    if(!m||/合计/.test(m))continue;
+    const L=parseFloat(cellVal(row.getCell(cols.L).value)),w=parseFloat(cellVal(row.getCell(cols.w).value)),q=parseInt(cellVal(row.getCell(cols.q).value),10);
+    if(!(L>0&&w>0&&q>0))continue;
+    out.push({m,L,w,q,s:cols.s?String(cellVal(row.getCell(cols.s).value)||"").trim():""})}
+  return{rows:out,hasStatus:!!cols.s,days:null};
+}
+async function parseJson(file){
+  const data=JSON.parse(await file.text());
+  if(!data||!Array.isArray(data.records))throw new Error("json");
+  const rows=data.records.filter(r=>r&&r.m&&r.q>0).map(r=>({m:String(r.m).toUpperCase(),L:+r.L,w:+r.w,q:+r.q,s:r.s||"",d:r.d}));
+  return{rows,hasStatus:true,days:[...new Set(rows.map(r=>r.d))].sort()};
+}
+$("impBtn").addEventListener("click",()=>$("impFile").click());
+$("impFile").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+  try{pending=/\.json$/i.test(f.name)?await parseJson(f):await parseXlsx(f)}
+  catch(err){say(err.message==="cols"?"这个 Excel 里找不到“型号、长度、理论支重、数量”这几列。请用车间盘点导出的铝型材清单。":err.message==="load"?"表格组件没加载成功，请联网打开一次再试。":"读不了这个文件。请选车间盘点导出的 Excel 或备份文件。",true);return}
+  if(!pending.rows.length){say("文件里没有可导入的库存行。",true);return}
+  pending.name=f.name;showImp();$("impDlg").showModal();
+});
+function showImp(){
+  const p=pending,dayOpts=p.days&&p.days.length>1?`<div class="field" style="margin:8px 0"><label for="impDay">文件里有好几天的数据，导入哪一天的？</label><select id="impDay">${p.days.map(d=>`<option${d===p.days[p.days.length-1]?" selected":""}>${d}</option>`).join("")}</select></div>`:"";
+  $("impBody").innerHTML=`<p style="margin:0 0 6px">文件：<b>${esc(p.name)}</b>，共 ${p.rows.length} 行。</p>${dayOpts}
+    ${p.hasStatus?`<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="impOnlyIn" checked> 只导入“已入库”的货</label>`:""}
+    <p class="sub">导入到 <b>${$("day").value}</b>。同型号、同长度、同支重的行会合并成一个规格。${stock.length?`<br><b style="color:var(--danger)">这一天已经有 ${stock.length} 个规格的库存，导入会替换掉旧库存；已做的分配会保留。</b>`:""}</p><div id="impPrev" class="sub"></div>`;
+  const upd=()=>{const g=groupImp();$("impPrev").textContent=`将导入 ${g.length} 个规格，共 ${fmt0(g.reduce((s,x)=>s+x.q,0))} 支。`};
+  $("impBody").querySelectorAll("input,select").forEach(x=>x.addEventListener("change",upd));upd();
+}
+function groupImp(){
+  const p=pending,onlyIn=$("impOnlyIn")?$("impOnlyIn").checked:false,day=$("impDay")?$("impDay").value:null;
+  const g=new Map();p.rows.forEach(r=>{if(day&&r.d!==day)return;if(onlyIn&&r.s&&r.s!=="已入库")return;const k=key(r.m,r.L,r.w);const x=g.get(k)||{m:r.m,L:r.L,w:r.w,q:0};x.q+=r.q;g.set(k,x)});
+  return[...g.values()];
+}
+$("impCancel").addEventListener("click",()=>{pending=null;$("impDlg").close()});
+$("impOk").addEventListener("click",async()=>{
+  const g=groupImp();if(!g.length){say("按这个条件没有可导入的行。",true);return}
+  const d=$("day").value;
+  await S.delMany("stock",stock.map(s=>s.id));
+  await S.putMany("stock",g.map((x,i)=>Object.assign({id:uid()+i,d,o:i},x)));
+  $("impDlg").close();pending=null;picked=null;await loadAll();
+  const over=stock.map(s=>({s,a:allocated(key(s.m,s.L,s.w))})).filter(x=>x.a>x.s.q).length;
+  say(`已导入 ${g.length} 个规格的库存。`+(over?` 注意：有 ${over} 个规格已分配的数量超过了新库存，表里剩余会显示负数。`:""),!!over);
+});
+
+/* ---------- export ---------- */
+async function shareFile(blob,name){
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
+}
+const XT="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+function xlStyles(){const thin={style:"thin",color:{argb:"FFBFBFBF"}};return{F:{name:"Arial",size:11},FB:{name:"Arial",size:11,bold:true},FH:{name:"Arial",size:11,bold:true,color:{argb:"FFFFFFFF"}},BD:{top:thin,left:thin,bottom:thin,right:thin},fill:c=>({type:"pattern",pattern:"solid",fgColor:{argb:"FF"+c}})}}
+const mmdd=d=>d.slice(5).replace("-","");
+$("slipBtn").addEventListener("click",async()=>{
+  if(!alloc.length){say("今天还没有分配，没有提货单可导出。",true);return}
+  try{
+    const XL=await loadExcelJS(),wb=new XL.Workbook(),{F,FB,FH,BD,fill}=xlStyles(),d=$("day").value;
+    const byP={};alloc.forEach(a=>(byP[a.plant]=byP[a.plant]||[]).push(a));
+    Object.keys(byP).forEach(pid=>{
+      const p=plants.find(x=>x.id===pid)||{name:plantName(pid)};
+      const sn=String(p.name).replace(/[\\\/\?\*\[\]:]/g,"").slice(0,28)||"加工厂";
+      const ws=wb.addWorksheet(wb.getWorksheet(sn)?sn+"_"+pid.slice(-3):sn,{pageSetup:{paperSize:9,orientation:"portrait",fitToPage:true,fitToWidth:1,fitToHeight:0}});
+      ws.mergeCells("A1:H1");ws.getCell("A1").value="提 货 单";ws.getCell("A1").font={name:"Arial",size:18,bold:true};ws.getCell("A1").alignment={horizontal:"center"};ws.getRow(1).height=30;
+      ws.getCell("A2").value="提货方："+p.name;ws.getCell("E2").value="日期："+d;
+      ws.getCell("A3").value="联系人："+(p.contact||"")+"　电话："+(p.phone||"");ws.getCell("E3").value="地址："+(p.addr||"");
+      ["A2","E2","A3","E3"].forEach(c=>ws.getCell(c).font=F);
+      const hr=ws.getRow(5);["序号","客户","型号","长度(米)","理论支重","支数","重量(kg)","备注"].forEach((h,i)=>{const c=hr.getCell(i+1);c.value=h;c.font=FH;c.fill=fill("305496");c.border=BD;c.alignment={horizontal:"center",vertical:"middle"}});hr.height=24;
+      const rows=byP[pid].slice().sort((a,b)=>custName(a.cust).localeCompare(custName(b.cust),"zh")||a.t-b.t);
+      rows.forEach((a,i)=>{const r=6+i,kg=kgOf(a.w,a.L,a.q);
+        const row=ws.getRow(r);[i+1,custName(a.cust),a.m,a.L,a.w,a.q,{formula:`E${r}/6*D${r}*F${r}`,result:kg},a.n||""].forEach((v,j)=>{const c=row.getCell(j+1);c.value=v;c.font=F;c.border=BD;if(j!==1&&j!==7)c.alignment={horizontal:"center"}});
+        ws.getCell(`D${r}`).numFmt="0.00";ws.getCell(`E${r}`).numFmt="0.000";ws.getCell(`F${r}`).numFmt="#,##0";ws.getCell(`G${r}`).numFmt="#,##0.0"});
+      const tr=6+rows.length,last=tr-1;
+      ws.getCell(`A${tr}`).value="合计";ws.getCell(`F${tr}`).value={formula:`SUM(F6:F${last})`,result:rows.reduce((s,a)=>s+a.q,0)};ws.getCell(`G${tr}`).value={formula:`SUM(G6:G${last})`,result:rows.reduce((s,a)=>s+kgOf(a.w,a.L,a.q),0)};
+      for(let c=1;c<=8;c++){const x=ws.getRow(tr).getCell(c);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}
+      ws.getCell(`F${tr}`).numFmt="#,##0";ws.getCell(`G${tr}`).numFmt="#,##0.0";
+      ws.getCell(`A${tr+2}`).value="重量为理论重量：理论支重÷6×长度×支数。";ws.getCell(`A${tr+2}`).font={name:"Arial",size:9,italic:true,color:{argb:"FF7F7F7F"}};
+      ws.getCell(`A${tr+4}`).value="发货人：";ws.getCell(`D${tr+4}`).value="提货人：";ws.getCell(`G${tr+4}`).value="日期：";[`A${tr+4}`,`D${tr+4}`,`G${tr+4}`].forEach(c=>ws.getCell(c).font=FB);
+      [6,16,14,9,10,10,11,18].forEach((w,i)=>ws.getColumn(i+1).width=w);
+    });
+    await shareFile(new Blob([await wb.xlsx.writeBuffer()],{type:XT}),`提货单_${mmdd(d)}.xlsx`);
+    say(`已导出提货单：${Object.keys(byP).length} 个加工厂，每个厂一张表，可以直接打印。`);
+  }catch(e){say("导出失败，请再试一次。",true)}
+});
+$("sumBtn").addEventListener("click",async()=>{
+  if(!stock.length&&!alloc.length){say("这一天还没有数据。",true);return}
+  try{
+    const XL=await loadExcelJS(),wb=new XL.Workbook(),{F,FB,FH,BD,fill}=xlStyles(),d=$("day").value;
+    const head=(ws,cols)=>{const r=ws.addRow(cols);r.height=24;r.eachCell(c=>{c.font=FH;c.fill=fill("305496");c.border=BD;c.alignment={horizontal:"center",vertical:"middle",wrapText:true}})};
+    const fin=(ws,widths)=>{widths.forEach((w,i)=>ws.getColumn(i+1).width=w);ws.views=[{state:"frozen",ySplit:1}]};
+    const body=(row,fmts)=>{row.eachCell({includeEmpty:true},(c,i)=>{c.font=F;c.border=BD;if(fmts[i-1])c.numFmt=fmts[i-1]})};
+    const total=(ws,n,cols)=>{const r=ws.addRow([]);r.getCell(1).value="合计";Object.entries(cols).forEach(([c,res])=>{const x=r.getCell(+c);x.value={formula:`SUM(${x.address.replace(/\d+/,"")}2:${x.address.replace(/\d+/,"")}${n+1})`,result:res}});for(let i=1;i<=ws.columnCount;i++){const x=r.getCell(i);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}return r};
+    // 明细
+    const ws=wb.addWorksheet("分配明细");head(ws,["序号","客户","加工厂","型号","长度(米)","理论支重","实际支重","支数","重量(kg)","备注"]);
+    alloc.forEach((a,i)=>{const r=i+2;body(ws.addRow([i+1,custName(a.cust),plantName(a.plant),a.m,a.L,a.w,{formula:`F${r}/6*E${r}`,result:a.w/6*a.L},a.q,{formula:`G${r}*H${r}`,result:kgOf(a.w,a.L,a.q)},a.n||""]),["","","","","0.00","0.000","0.0000","#,##0","#,##0.0",""])});
+    const tr=total(ws,alloc.length,{8:alloc.reduce((s,a)=>s+a.q,0),9:alloc.reduce((s,a)=>s+kgOf(a.w,a.L,a.q),0)});tr.getCell(8).numFmt="#,##0";tr.getCell(9).numFmt="#,##0.0";
+    fin(ws,[6,16,16,14,9,10,10,10,12,20]);ws.autoFilter=`A1:J${alloc.length+1}`;
+    const n=alloc.length+1,R=c=>`分配明细!$${c}$2:$${c}$${n}`;
+    // 按加工厂 / 按客户
+    [["按加工厂","C",a=>a.plant,plantName],["按客户","B",a=>a.cust,custName]].forEach(([nm,col,kf,namef])=>{
+      const s=wb.addWorksheet(nm);head(s,[nm==="按加工厂"?"加工厂":"客户","笔数","支数","重量(kg)"]);
+      const ids=[...new Set(alloc.map(kf))];
+      ids.forEach((id,i)=>{const r=i+2,mine=alloc.filter(a=>kf(a)===id);body(s.addRow([namef(id),{formula:`COUNTIF(${R(col)},A${r})`,result:mine.length},{formula:`SUMIFS(${R("H")},${R(col)},A${r})`,result:mine.reduce((x,a)=>x+a.q,0)},{formula:`SUMIFS(${R("I")},${R(col)},A${r})`,result:mine.reduce((x,a)=>x+kgOf(a.w,a.L,a.q),0)}]),["","","#,##0","#,##0.0"])});
+      const t=total(s,ids.length,{2:alloc.length,3:alloc.reduce((x,a)=>x+a.q,0),4:alloc.reduce((x,a)=>x+kgOf(a.w,a.L,a.q),0)});t.getCell(3).numFmt="#,##0";t.getCell(4).numFmt="#,##0.0";
+      fin(s,[20,8,12,14])});
+    // 剩余库存
+    const ss=wb.addWorksheet("剩余库存");head(ss,["型号","长度(米)","理论支重","实际支重","库存(支)","已分(支)","剩余(支)","剩余重量(kg)"]);
+    stock.forEach((s,i)=>{const r=i+2,a=allocated(key(s.m,s.L,s.w));body(ss.addRow([s.m,s.L,s.w,{formula:`C${r}/6*B${r}`,result:s.w/6*s.L},s.q,a,{formula:`E${r}-F${r}`,result:s.q-a},{formula:`D${r}*G${r}`,result:kgOf(s.w,s.L,s.q-a)}]),["","0.00","0.000","0.0000","#,##0","#,##0","#,##0","#,##0.0"])});
+    const sq=stock.reduce((x,s)=>x+s.q,0),sa=stock.reduce((x,s)=>x+allocated(key(s.m,s.L,s.w)),0);
+    const st2=total(ss,stock.length,{5:sq,6:sa,7:sq-sa,8:stock.reduce((x,s)=>x+kgOf(s.w,s.L,s.q-allocated(key(s.m,s.L,s.w))),0)});[5,6,7].forEach(c=>st2.getCell(c).numFmt="#,##0");st2.getCell(8).numFmt="#,##0.0";
+    fin(ss,[16,9,10,10,10,10,10,13]);ss.autoFilter=`A1:H${stock.length+1}`;
+    await shareFile(new Blob([await wb.xlsx.writeBuffer()],{type:XT}),`出货分配总表_${mmdd(d)}.xlsx`);
+    say("已导出当日总表：分配明细、按加工厂、按客户、剩余库存四张表。");
+  }catch(e){console.error(e);say("导出失败，请再试一次。",true)}
+});
+
+/* ---------- backup / restore ---------- */
+$("backupBtn").addEventListener("click",async()=>{
+  const data={app:"chuhuo-fenpei",v:1,at:new Date().toISOString(),stock:await S.all("stock"),alloc:await S.all("alloc"),cust:await S.all("cust"),plant:await S.all("plant")};
+  await shareFile(new Blob([JSON.stringify(data)],{type:"application/json"}),`出货分配备份_${today().replace(/-/g,"")}.json`);
+  say(`已生成备份：${data.cust.length} 个客户、${data.plant.length} 个加工厂、${data.alloc.length} 笔分配。请存到安全的地方。`);
+});
+$("restoreBtn").addEventListener("click",()=>$("restoreFile").click());
+$("restoreFile").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+  try{const d=JSON.parse(await f.text());if(!d||d.app!=="chuhuo-fenpei")throw 0;
+    for(const k of ["stock","alloc","cust","plant"])if(Array.isArray(d[k]))await S.putMany(k,d[k].filter(x=>x&&x.id));
+    await loadAll();say(`已恢复：${(d.cust||[]).length} 个客户、${(d.plant||[]).length} 个加工厂、${(d.alloc||[]).length} 笔分配。`)}
+  catch(err){say("这个文件不是出货分配的备份，没有恢复。（车间盘点的文件请用“导入当天库存”）",true)}
+});
+
+$("day").addEventListener("change",()=>{picked=null;editQ=null;loadAll()});
+(async()=>{try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  await loadAll();
+  if(lastCust&&custs.some(c=>c.id===lastCust))custBox.set(lastCust);
+  if(lastPlant&&plants.some(p=>p.id===lastPlant))plantBox.set(lastPlant);
+})();
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+})();
+</script>
+</body>
+</html>
