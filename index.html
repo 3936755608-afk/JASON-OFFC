@@ -16,7 +16,7 @@
 :root{
   --bg:#eef1f3; --panel:#ffffff; --ink:#1b2328; --muted:#5d6a72; --line:#d3dade; --soft:#e4e9ec;
   --accent:#1f5f7a; --accent-ink:#ffffff; --danger:#b3261e; --warn-bg:#fff4cc; --warn-ink:#6b4e00;
-  --st-in:#e2efda; --st-in-ink:#2f5d1e; --st-pk:#ddebf7; --st-pk-ink:#1f4e79; --st-new:#fce4d6; --st-new-ink:#8a3b0e;
+  --st-in:#e2efda; --st-in-ink:#2f5d1e; --st-pk:#ddebf7; --st-pk-ink:#1f4e79; --st-new:#fce4d6; --st-new-ink:#8a3b0e; --len:#5b2fa8; --len-bg:#ece4fb; --wt:#b3125c; --wt-bg:#fde3ef;
   --f-body:"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
   --f-data:"SF Mono",ui-monospace,Menlo,monospace;
   --r:10px;
@@ -24,12 +24,12 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12171a; --panel:#1b2226; --ink:#e6ecef; --muted:#9aa8b0; --line:#2f3a40; --soft:#242d32;
   --accent:#5fb3d4; --accent-ink:#0d1a20; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a;
-  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94;
+  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12171a; --panel:#1b2226; --ink:#e6ecef; --muted:#9aa8b0; --line:#2f3a40; --soft:#242d32;
   --accent:#5fb3d4; --accent-ink:#0d1a20; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a;
-  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94;
+  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
   color-scheme:dark}
 *{box-sizing:border-box}
 html,body{background:var(--bg);color:var(--ink)}
@@ -125,6 +125,12 @@ header.top .sub{color:var(--muted);font-size:13px}
 .tools input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px;min-width:0;flex:1 1 140px}
 .bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:14px}
 .list{display:flex;flex-direction:column}
+.tL,.tW{font-family:var(--f-data);font-weight:700;border-radius:6px;padding:1px 7px;white-space:nowrap;display:inline-block}
+.tL{color:var(--len);background:var(--len-bg)}
+.tW{color:var(--wt);background:var(--wt-bg)}
+.qk-spec .tL,.qk-spec .tW{font-size:20px;padding:3px 10px;margin:4px 6px 0 0}
+label.lL{color:var(--len);font-weight:700}label.lW{color:var(--wt);font-weight:700}
+#fLen{border:2px solid var(--len);color:var(--len);font-weight:700}#fW{border:2px solid var(--wt);color:var(--wt);font-weight:700}
 .item.selmode{grid-template-columns:34px 6px minmax(0,1fr) auto}
 .chk{width:28px;height:28px;border-radius:7px;border:2px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent-ink);cursor:pointer}
 .chk.on{background:var(--accent);border-color:var(--accent)}
@@ -217,8 +223,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
       </div>
       <div class="sugg" id="sugg" hidden></div>
       <div class="row2">
-        <div class="field"><label for="fLen">长度(米)</label><input id="fLen" class="data" inputmode="decimal" placeholder="3"></div>
-        <div class="field"><label for="fW">理论支重(kg/6米)</label><input id="fW" class="data" inputmode="decimal" placeholder="0.172"></div>
+        <div class="field"><label for="fLen" class="lL">长度(米)</label><input id="fLen" class="data" inputmode="decimal" placeholder="3"></div>
+        <div class="field"><label for="fW" class="lW">理论支重(kg/6米)</label><input id="fW" class="data" inputmode="decimal" placeholder="0.172"></div>
       </div>
       <div class="chips" id="lenChips" aria-label="常用长度"></div>
       <div class="field"><label for="fQty">支数</label><input id="fQty" class="qty" inputmode="numeric" pattern="[0-9]*" placeholder="0"></div>
@@ -314,7 +320,7 @@ function suggest(){
     .sort((a,b)=>a.score-b.score||a.c.m.localeCompare(b.c.m)||a.c.L-b.c.L||a.c.w-b.c.w).slice(0,10);
   if(!hits.length){box.hidden=false;box.innerHTML=`<div class="empty" style="padding:12px">型号库里没有“${esc(clean(raw))}”。填好长度和支重后保存，会自动加入型号库。</div>`;return}
   box.hidden=false;
-  box.innerHTML=hits.map(({c})=>`<button type="button" data-m="${esc(c.m)}" data-l="${c.L}" data-w="${c.w}"><span class="m">${esc(c.m)}</span><span class="d">${c.L}米 · ${c.w}</span></button>`).join("");
+  box.innerHTML=hits.map(({c})=>`<button type="button" data-m="${esc(c.m)}" data-l="${c.L}" data-w="${c.w}"><span class="m">${esc(c.m)}</span><span class="d"><span class="tL">${c.L}米</span> <span class="tW">${c.w}</span></span></button>`).join("");
 }
 $("fModel").addEventListener("input",()=>{suggest();update()});
 $("fModel").addEventListener("focus",suggest);
@@ -435,7 +441,7 @@ function renderList(){
     return `<div class="item ${c}${qkId===r.id?" cur":""}${selMode?" selmode":""}${sel.has(r.id)?" picked":""}" data-id="${r.id}">${selMode?`<span class="chk${sel.has(r.id)?" on":""}" data-pick="${r.id}" role="checkbox" aria-checked="${sel.has(r.id)}" tabindex="0">${sel.has(r.id)?"✓":""}</span>`:""}<div class="bar"></div>
       <div class="main" data-edit="${r.id}" role="button" tabindex="0" aria-label="修改 ${esc(r.m)}">
         <div class="l1"><span class="mm">${esc(r.m)}</span>${pend?`<span class="q pend">待填${r.pq!=null?" · 上次 "+fmt0(r.pq):""}</span>`:`<span class="q">${fmt0(r.q)} 支</span>`}</div>
-        <div class="l2">${r.L}米 · 支重 ${r.w} · 实际 ${(r.w/6*r.L).toFixed(4)}${pend?"":" · "+fmt1(kg)+" kg"}${r.p?" · "+esc(r.p):""}</div>
+        <div class="l2"><span class="tL">${r.L}米</span> <span class="tW">支重 ${r.w}</span> · 实际 ${(r.w/6*r.L).toFixed(4)}${pend?"":" · "+fmt1(kg)+" kg"}${r.p?" · "+esc(r.p):""}</div>
         ${r.n?`<div class="note">${esc(r.n)}</div>`:""}
       </div>
       <div class="side"><span class="pill ${c}">${esc(r.s)}</span>${r.s!=="已入库"?`<button type="button" class="mv" data-in="${r.id}">入库 ✓</button>`:""}</div></div>`}).join("");
@@ -582,7 +588,7 @@ function paintQuick(){
   const r=records[i],left=records.filter(x=>x.q==null).length;
   $("qkPos").textContent=`第 ${i+1} / ${records.length} 个 · 还剩 ${left} 个未填`;
   $("qkModel").textContent=r.m;
-  $("qkSpec").textContent=`${r.L}米 · 支重 ${r.w} · 实际 ${(r.w/6*r.L).toFixed(4)} kg/支`;
+  $("qkSpec").innerHTML=`<span class="tL">${r.L}米</span><span class="tW">支重 ${r.w}</span><div>实际 ${(r.w/6*r.L).toFixed(4)} kg/支</div>`;
   $("qkPrev").textContent=r.pq!=null?`上次：${fmt0(r.pq)} 支`:"";
   const v=$("qkVal");v.textContent=qkVal?Number(qkVal).toLocaleString("zh-CN"):"支数";v.classList.toggle("empty",!qkVal);
   for(const b of $("qkSeg").children)b.setAttribute("aria-pressed",String(b.dataset.s===qkS));
@@ -635,7 +641,7 @@ function renderCat(){
   const k=norm($("catQ").value);
   const list=catalog.map((c,i)=>({c,i})).filter(x=>!k||norm(x.c.m).includes(k)).sort((a,b)=>a.c.m<b.c.m?-1:a.c.m>b.c.m?1:a.c.L-b.c.L||a.c.w-b.c.w);
   $("catCount").textContent=catalog.length+" 个";
-  $("catList").innerHTML=list.slice(0,200).map(({c,i})=>`<div class="catrow"><span class="data"><b>${esc(c.m)}</b> · ${c.L}米 · ${c.w}</span><button type="button" class="btn${catDelArm===i?" danger":""}" data-ci="${i}">${catDelArm===i?"确认删除":"删除"}</button></div>`).join("")+(list.length>200?`<div class="sub" style="padding:8px 0">还有 ${list.length-200} 个，请输入型号搜索。</div>`:"");
+  $("catList").innerHTML=list.slice(0,200).map(({c,i})=>`<div class="catrow"><span class="data"><b>${esc(c.m)}</b> <span class="tL">${c.L}米</span> <span class="tW">${c.w}</span></span><button type="button" class="btn${catDelArm===i?" danger":""}" data-ci="${i}">${catDelArm===i?"确认删除":"删除"}</button></div>`).join("")+(list.length>200?`<div class="sub" style="padding:8px 0">还有 ${list.length-200} 个，请输入型号搜索。</div>`:"");
 }
 $("catBtn").addEventListener("click",()=>{catDelArm=null;$("catQ").value="";renderCat();$("catDlg").showModal()});
 $("catClose").addEventListener("click",()=>$("catDlg").close());
