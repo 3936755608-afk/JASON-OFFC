@@ -66,7 +66,26 @@ header.top .sub{color:var(--muted);font-size:13px}
 
 .cols{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
-.entry{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;flex-direction:column;gap:12px}
+.leftcol{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);min-width:0;display:flex;flex-direction:column;gap:12px}
+.entry{display:flex;flex-direction:column;gap:12px}
+.qk-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.qk-pos{font-family:var(--f-data);color:var(--muted);font-size:14px}
+.qk-model{font-family:var(--f-data);font-size:32px;font-weight:700;line-height:1.15;overflow-wrap:anywhere}
+.qk-spec{font-family:var(--f-data);color:var(--muted);font-size:15px}
+.qk-prev{font-size:14px;color:var(--muted)}
+.qk-val{font-family:var(--f-data);font-size:44px;font-weight:700;text-align:right;background:var(--bg);border:2px solid var(--accent);border-radius:10px;padding:6px 14px;min-height:72px;font-variant-numeric:tabular-nums}
+.qk-val.empty{color:var(--muted);border-color:var(--line)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{min-height:62px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-family:var(--f-data);font-size:26px;font-weight:600;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.pad button:active{background:var(--soft)}
+.pad .fn{font-family:var(--f-body);font-size:16px;font-weight:500}
+.qk-nav{display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px}
+.qk-nav button{min-height:58px;border-radius:10px;font-weight:700;font-size:17px;touch-action:manipulation}
+.startbox{display:flex;flex-direction:column;gap:10px;align-items:stretch;padding:20px 8px;text-align:center;color:var(--muted)}
+.startbox .btn{font-size:16px;min-height:52px}
+.item .q.pend{color:var(--muted);font-weight:500;font-size:14px;border:1px dashed var(--line);border-radius:6px;padding:0 8px}
+.item.cur{background:var(--soft)}
+
 .entry h2,.ledger h2{font-size:15px;margin:0;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .entry h2 .mode{font-size:12px;font-weight:500;background:var(--warn-bg);color:var(--warn-ink);border-radius:999px;padding:2px 10px}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -123,7 +142,7 @@ header.top .sub{color:var(--muted);font-size:13px}
 .empty{color:var(--muted);text-align:center;padding:40px 12px;font-size:15px}
 .foot{color:var(--muted);font-size:12px;text-align:center}
 
-@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}.entry{position:static}}
+@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}.leftcol{position:static}}
 @media (max-width:560px){.totals{grid-template-columns:repeat(2,minmax(0,1fr))}.tcard .big{font-size:19px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
@@ -160,6 +179,29 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   <section class="totals" id="totals" aria-label="当日合计"></section>
 
   <div class="cols">
+    <div class="leftcol">
+    <section class="panel entry" id="quick" hidden aria-label="快速填数">
+      <div class="qk-head"><span class="qk-pos" id="qkPos"></span><button type="button" class="btn" id="qkExit">退出快速填数</button></div>
+      <div><div class="qk-model" id="qkModel"></div><div class="qk-spec" id="qkSpec"></div><div class="qk-prev" id="qkPrev"></div></div>
+      <div class="seg" id="qkSeg">
+        <button type="button" class="in" data-s="已入库" aria-pressed="false">已入库</button>
+        <button type="button" class="pk" data-s="包装中" aria-pressed="false">包装中</button>
+        <button type="button" class="nw" data-s="刚生产" aria-pressed="false">刚生产</button>
+      </div>
+      <div class="qk-val empty" id="qkVal" aria-live="polite">支数</div>
+      <div class="pad" id="pad">
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+        <button type="button" class="fn" data-k="clr">清空</button><button type="button" data-k="0">0</button><button type="button" class="fn" data-k="del">⌫ 退格</button>
+      </div>
+      <div class="qk-nav">
+        <button type="button" class="btn" id="qkPrevBtn">上一个</button>
+        <button type="button" class="btn" id="qkSkip">跳过</button>
+        <button type="button" class="btn primary" id="qkOk">确定 · 下一个</button>
+      </div>
+      <div class="msg" id="qkMsg" role="status"></div>
+    </section>
     <form class="panel entry" id="form" autocomplete="off">
       <h2><span id="formTitle">新录一条</span><span class="mode" id="editTag" hidden>正在修改</span></h2>
       <div class="field">
@@ -190,6 +232,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
       </div>
       <div class="msg" id="msg" role="status"></div>
     </form>
+    </div>
 
     <section class="panel ledger" aria-label="当日记录">
       <h2><span id="listTitle">今天的记录</span><span class="sub num" id="listCount"></span></h2>
@@ -202,6 +245,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
         </div>
         <input id="q" placeholder="搜型号" spellcheck="false" autocapitalize="characters">
       </div>
+      <div class="bulk" id="pend" hidden></div>
       <div class="bulk" id="bulk" hidden></div>
       <div class="list" id="list"><div class="empty">正在读取记录…</div></div>
     </section>
@@ -222,6 +266,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 </div>
 
 <script src="catalog.js"></script>
+<script src="template.js"></script>
 <script>
 (function(){
 const ST=["已入库","包装中","刚生产"], CLS={"已入库":"in","包装中":"pk","刚生产":"nw"};
@@ -343,7 +388,7 @@ function startEdit(r){
 function visible(){const k=norm(search);return records.filter(r=>(!filter||r.s===filter)&&(!k||norm(r.m).includes(k)))}
 function renderTotals(){
   const agg={};ST.forEach(s=>agg[s]={n:0,q:0,kg:0});let all={n:0,q:0,kg:0};
-  records.forEach(r=>{const kg=r.w/6*r.L*r.q,a=agg[r.s]||(agg[r.s]={n:0,q:0,kg:0});a.n++;a.q+=r.q;a.kg+=kg;all.n++;all.q+=r.q;all.kg+=kg});
+  records.forEach(r=>{if(!(r.q>0))return;const kg=r.w/6*r.L*r.q,a=agg[r.s]||(agg[r.s]={n:0,q:0,kg:0});a.n++;a.q+=r.q;a.kg+=kg;all.n++;all.q+=r.q;all.kg+=kg});
   const card=(cls,lab,a)=>`<div class="tcard ${cls}"><div class="lab"><span>${lab}</span><span class="num">${a.n} 行</span></div><div class="big">${fmt0(a.q)}<span style="font-size:13px"> 支</span></div><div class="sm">${fmt1(a.kg)} kg</div></div>`;
   $("totals").innerHTML=card("in","已入库",agg["已入库"])+card("pk","包装中",agg["包装中"])+card("nw","刚生产",agg["刚生产"])+card("","合计",all);
 }
@@ -352,13 +397,14 @@ function renderList(){
   $("listCount").textContent=v.length+" / "+records.length+" 行";
   const isToday=$("day").value===today();
   $("listTitle").textContent=isToday?"今天的记录":$("day").value+" 的记录";
-  if(!records.length){$("list").innerHTML=`<div class="empty">这一天还没有记录。<br>在左边输入型号、选好长度和支重、填支数，点“保存这一条”。</div>`;$("bulk").hidden=true;return}
+  renderPend();
+  if(!records.length){renderStart();$("bulk").hidden=true;return}
   if(!v.length){$("list").innerHTML=`<div class="empty">没有符合筛选条件的记录。</div>`}
-  else $("list").innerHTML=v.map(r=>{const kg=r.w/6*r.L*r.q,c=CLS[r.s]||"nw";
-    return `<div class="item ${c}" data-id="${r.id}"><div class="bar"></div>
+  else $("list").innerHTML=v.map(r=>{const kg=r.q>0?r.w/6*r.L*r.q:0,c=CLS[r.s]||"nw",pend=r.q==null;
+    return `<div class="item ${c}${qkId===r.id?" cur":""}" data-id="${r.id}"><div class="bar"></div>
       <div class="main" data-edit="${r.id}" role="button" tabindex="0" aria-label="修改 ${esc(r.m)}">
-        <div class="l1"><span class="mm">${esc(r.m)}</span><span class="q">${fmt0(r.q)} 支</span></div>
-        <div class="l2">${r.L}米 · 支重 ${r.w} · 实际 ${(r.w/6*r.L).toFixed(4)} · ${fmt1(kg)} kg${r.p?" · "+esc(r.p):""}</div>
+        <div class="l1"><span class="mm">${esc(r.m)}</span>${pend?`<span class="q pend">待填${r.pq!=null?" · 上次 "+fmt0(r.pq):""}</span>`:`<span class="q">${fmt0(r.q)} 支</span>`}</div>
+        <div class="l2">${r.L}米 · 支重 ${r.w} · 实际 ${(r.w/6*r.L).toFixed(4)}${pend?"":" · "+fmt1(kg)+" kg"}${r.p?" · "+esc(r.p):""}</div>
         ${r.n?`<div class="note">${esc(r.n)}</div>`:""}
       </div>
       <div class="side"><span class="pill ${c}">${esc(r.s)}</span>${r.s!=="已入库"?`<button type="button" class="mv" data-in="${r.id}">入库 ✓</button>`:""}</div></div>`}).join("");
@@ -373,7 +419,7 @@ function render(){renderTotals();renderList();update()}
 $("list").addEventListener("click",async e=>{
   const mv=e.target.closest("[data-in]");
   if(mv){mv.disabled=true;try{await S.update(mv.dataset.in,{s:"已入库"});await loadDay()}catch(err){mv.disabled=false;say("改状态失败，请再点一次。",true)}return}
-  const ed=e.target.closest("[data-edit]");if(ed){const r=records.find(x=>x.id===ed.dataset.edit);if(r)startEdit(r)}
+  const ed=e.target.closest("[data-edit]");if(ed){const r=records.find(x=>x.id===ed.dataset.edit);if(r){if(qkId||r.q==null)openQuick(r.id);else startEdit(r)}}
 });
 $("list").addEventListener("keydown",e=>{if(e.key==="Enter"){const ed=e.target.closest("[data-edit]");if(ed)ed.click()}});
 $("bulk").addEventListener("click",async e=>{
@@ -399,6 +445,8 @@ const S=(()=>{
     all:()=>tx("records","readonly",st=>st.getAll()),
     add:rec=>tx("records","readwrite",st=>st.put(Object.assign({id:uid()},rec))),
     put:rec=>tx("records","readwrite",st=>st.put(rec)),
+    addMany:recs=>tx("records","readwrite",st=>{recs.forEach(r=>st.put(Object.assign({id:uid()},r)))}),
+    delMany:ids=>tx("records","readwrite",st=>{ids.forEach(id=>st.delete(id))}),
     update:async(id,patch)=>{const d=await open();return new Promise((ok,bad)=>{const t=d.transaction("records","readwrite"),st=t.objectStore("records"),g=st.get(id);g.onsuccess=()=>{if(g.result)st.put(Object.assign(g.result,patch))};t.oncomplete=()=>ok();t.onerror=()=>bad(t.error)})},
     del:id=>tx("records","readwrite",st=>st.delete(id)),
     getCat:()=>tx("kv","readonly",st=>st.get("catalog")),
@@ -409,7 +457,7 @@ async function loadDay(){
   try{const rs=await S.byDay($("day").value);records=rs.sort((a,b)=>(a.t||0)-(b.t||0));render()}
   catch(e){setSync("bad","读取失败");$("list").innerHTML=`<div class="empty">读取记录失败，请关掉 App 重新打开。</div>`}
 }
-$("day").addEventListener("change",()=>{resetForm();loadDay()});
+$("day").addEventListener("change",()=>{resetForm();closeQuick();loadDay()});
 (async()=>{
   try{
     let c=await S.getCat();
@@ -430,6 +478,96 @@ async function shareFile(blob,name){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);return "saved";
 }
+
+/* ---------- checklist: start the day from a template ---------- */
+let lastDayInfo=null, pendArm=false;
+async function findLastDay(){
+  try{const all=await S.all();const cur=$("day").value;const by={};
+    all.forEach(r=>{if(r.d<cur&&r.q>0)(by[r.d]=by[r.d]||[]).push(r)});
+    const days=Object.keys(by).sort();if(!days.length)return null;const d=days[days.length-1];
+    return{d,rows:by[d].sort((a,b)=>(a.t||0)-(b.t||0))}}catch(e){return null}
+}
+function renderStart(){
+  const base=new Set((window.BASE_TEMPLATE||[]).map(r=>r.m+"|"+r.L+"|"+r.w+"|"+r.s)).size;
+  const last=lastDayInfo;
+  $("list").innerHTML=`<div class="startbox">
+    <div>这一天还没有记录。先把要盘的型号一次排好，再用数字键盘逐个填支数：</div>
+    ${last?`<button type="button" class="btn primary" id="tplLast">按 ${esc(last.d)} 的型号排好（${last.rows.length} 个，带上次支数）</button>`:""}
+    ${base?`<button type="button" class="btn${last?"":" primary"}" id="tplBase">按标准清单排好（${base} 个型号）</button>`:""}
+    <div class="sub">同一型号有好几捆的，加起来填一个总数。清单里没有的型号，在左边新录。</div></div>`;
+}
+async function buildDay(rows){
+  const day=$("day").value,t0=Date.now();
+  const seen=new Set(),list=[];
+  rows.forEach(r=>{const k=r.m+"|"+r.L+"|"+r.w+"|"+r.s;if(seen.has(k))return;seen.add(k);list.push(r)});
+  await S.addMany(list.map((r,i)=>({d:day,m:r.m,L:r.L,w:r.w,s:r.s||"已入库",q:null,pq:(r.q>0?r.q:null),n:"",p:"",t:t0+i})));
+  await loadDay();say(`已排好 ${list.length} 个型号，开始逐个填支数。`);openQuick();
+}
+$("list").addEventListener("click",async e=>{
+  if(e.target.id==="tplLast"&&lastDayInfo){e.target.disabled=true;await buildDay(lastDayInfo.rows)}
+  if(e.target.id==="tplBase"){e.target.disabled=true;await buildDay(window.BASE_TEMPLATE||[])}
+});
+function renderPend(){
+  const n=records.filter(r=>r.q==null).length,box=$("pend");
+  if(!n){box.hidden=true;pendArm=false;return}
+  box.hidden=false;
+  box.innerHTML=pendArm?`<span>确定删除 ${n} 个还没填支数的型号？</span><button type="button" class="btn danger" id="pendYes">删除</button><button type="button" class="btn" id="pendNo">取消</button>`
+    :`<button type="button" class="btn primary" id="pendGo">快速填数（还剩 ${n} 个）</button><button type="button" class="btn" id="pendDel">删除未填的 ${n} 个</button>`;
+}
+$("pend").addEventListener("click",async e=>{
+  if(e.target.id==="pendGo")openQuick();
+  if(e.target.id==="pendDel"){pendArm=true;renderPend()}
+  if(e.target.id==="pendNo"){pendArm=false;renderPend()}
+  if(e.target.id==="pendYes"){pendArm=false;await S.delMany(records.filter(r=>r.q==null).map(r=>r.id));closeQuick();await loadDay();say("已删除未填的型号。")}
+});
+const _loadDay=loadDay;
+loadDay=async function(){lastDayInfo=await findLastDay();await _loadDay()};
+
+/* ---------- quick fill with big keypad ---------- */
+let qkId=null,qkVal="",qkS="已入库";
+function qkMsg(t,err){$("qkMsg").textContent=t||"";$("qkMsg").className="msg"+(err?" err":"")}
+function openQuick(id){
+  let r=id?records.find(x=>x.id===id):records.find(x=>x.q==null);
+  if(!r){say("所有型号都填好了。");closeQuick();return}
+  qkId=r.id;qkVal=r.q!=null?String(r.q):"";qkS=r.s||"已入库";
+  $("quick").hidden=false;$("form").hidden=true;paintQuick();renderList();
+  if(window.matchMedia("(max-width:900px)").matches)$("quick").scrollIntoView({block:"start",behavior:"smooth"});
+}
+function closeQuick(){qkId=null;$("quick").hidden=true;$("form").hidden=false;if(records)renderList()}
+function paintQuick(){
+  const i=records.findIndex(x=>x.id===qkId);if(i<0){closeQuick();return}
+  const r=records[i],left=records.filter(x=>x.q==null).length;
+  $("qkPos").textContent=`第 ${i+1} / ${records.length} 个 · 还剩 ${left} 个未填`;
+  $("qkModel").textContent=r.m;
+  $("qkSpec").textContent=`${r.L}米 · 支重 ${r.w} · 实际 ${(r.w/6*r.L).toFixed(4)} kg/支`;
+  $("qkPrev").textContent=r.pq!=null?`上次：${fmt0(r.pq)} 支`:"";
+  const v=$("qkVal");v.textContent=qkVal?Number(qkVal).toLocaleString("zh-CN"):"支数";v.classList.toggle("empty",!qkVal);
+  for(const b of $("qkSeg").children)b.setAttribute("aria-pressed",String(b.dataset.s===qkS));
+  const row=document.querySelector(`.item[data-id="${qkId}"]`);if(row)row.scrollIntoView({block:"nearest"});
+}
+$("qkSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;qkS=b.dataset.s;paintQuick()});
+$("pad").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const k=b.dataset.k;
+  if(k==="clr")qkVal="";else if(k==="del")qkVal=qkVal.slice(0,-1);else if(qkVal.length<6)qkVal=(qkVal==="0"?"":qkVal)+k;
+  qkMsg("");paintQuick()});
+function nextId(fromId,needEmpty){const i=records.findIndex(x=>x.id===fromId);
+  for(let j=i+1;j<records.length;j++)if(!needEmpty||records[j].q==null)return records[j].id;
+  if(needEmpty)for(let j=0;j<i;j++)if(records[j].q==null)return records[j].id;return null}
+$("qkOk").addEventListener("click",async()=>{
+  const q=parseInt(qkVal,10);
+  if(!(q>0)){qkMsg("请先输入支数；没有货就点“跳过”。",true);return}
+  const id=qkId;
+  try{await S.update(id,{q,s:qkS});await _loadDay()}catch(e){qkMsg("保存失败，请再点一次。",true);return}
+  const nx=nextId(id,true);
+  if(nx){qkId=nx;const r=records.find(x=>x.id===nx);qkVal="";qkS=r.s||"已入库";qkMsg(`已保存上一个：${fmt0(q)} 支`);paintQuick();renderList()}
+  else{closeQuick();say("全部填完了，可以导出 Excel。")}
+});
+$("qkSkip").addEventListener("click",()=>{const nx=nextId(qkId,false);if(!nx){qkMsg("已经是最后一个了。");return}openQuick(nx);qkMsg("")});
+$("qkPrevBtn").addEventListener("click",()=>{const i=records.findIndex(x=>x.id===qkId);if(i>0){openQuick(records[i-1].id);qkMsg("")}});
+$("qkExit").addEventListener("click",closeQuick);
+document.addEventListener("keydown",e=>{if($("quick").hidden)return;
+  if(/^[0-9]$/.test(e.key)){if(qkVal.length<6)qkVal=(qkVal==="0"?"":qkVal)+e.key;paintQuick();e.preventDefault()}
+  else if(e.key==="Backspace"){qkVal=qkVal.slice(0,-1);paintQuick();e.preventDefault()}
+  else if(e.key==="Enter"){$("qkOk").click();e.preventDefault()}});
 
 /* ---------- backup / restore ---------- */
 $("backupBtn").addEventListener("click",async()=>{
@@ -467,11 +605,12 @@ $("catList").addEventListener("click",async e=>{const b=e.target.closest("[data-
 function loadExcelJS(){return new Promise((ok,bad)=>{if(window.ExcelJS)return ok(window.ExcelJS);const s=document.createElement("script");s.src="./exceljs.min.js";s.onload=()=>ok(window.ExcelJS);s.onerror=()=>bad(new Error("load"));document.head.appendChild(s)})}
 $("exportBtn").addEventListener("click",async()=>{
   const btn=$("exportBtn");
-  if(!records.length){say("这一天还没有记录，没有可导出的内容。",true);return}
+  const done=records.filter(r=>r.q>0);
+  if(!done.length){say("这一天还没有填了支数的记录，没有可导出的内容。",true);return}
   btn.disabled=true;btn.textContent="正在生成…";
   try{
     const XL=await loadExcelJS();
-    const buf=await buildWorkbook(XL,records.slice(),$("day").value);
+    const buf=await buildWorkbook(XL,done,$("day").value);
     const d=$("day").value.split("-");
     const r=await shareFile(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),`铝型材清单_${d[1]}${d[2]}.xlsx`);
     say(r==="cancel"?"已取消导出。":"Excel 已生成，可以存到“文件”、发微信或用 WPS 打开。");
