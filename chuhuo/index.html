@@ -167,6 +167,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     <div class="datebox"><label for="day" class="sub">日期</label><input type="date" id="day"></div>
     <button class="btn primary" id="pdBtn" type="button">读取车间盘点库存</button>
     <button class="btn" id="impBtn" type="button">导入文件</button>
+    <button class="btn" id="tiBtn" type="button">导入已提货单</button>
+    <input type="file" id="tiFile" accept=".xlsx" hidden>
     <input type="file" id="impFile" accept=".xlsx,.json" hidden>
     <button class="btn" id="dataBtn" type="button">客户 / 加工厂资料</button>
     <button class="btn" id="slipBtn" type="button">导出提货单</button>
@@ -262,6 +264,14 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:14px"><input type="checkbox" id="pkDeduct" checked> 从车间盘点里扣掉这些货（已入库 → 已出货）</label>
   <div class="msg" id="pkMsg"></div>
   <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn primary" type="button" id="pkOk">确认提货</button><button class="btn" type="button" id="pkCancel">取消</button></div>
+</dialog>
+
+<dialog id="tiDlg">
+  <h2 style="margin:0 0 8px;font-size:17px">导入已提货单</h2>
+  <div id="tiBody"></div>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:14px"><input type="checkbox" id="tiDeduct" checked> 同时从车间盘点里扣掉这些货（已入库 → 已出货）</label>
+  <div class="msg" id="tiMsg"></div>
+  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn primary" type="button" id="tiOk">导入并确认提货</button><button class="btn" type="button" id="tiCancel">取消</button></div>
 </dialog>
 
 <dialog id="impDlg">
@@ -558,7 +568,7 @@ $("sumList").addEventListener("click",async e=>{
   if(pk){pkPlant=pk.dataset.pk;const mine=alloc.filter(a=>a.plant===pkPlant);
     $("pkTitle").textContent="确认提货："+plantName(pkPlant);
     $("pkSum").textContent=`${mine.length} 笔，${fmt0(mine.reduce((s,a)=>s+a.q,0))} 支，${fmt1(mine.reduce((s,a)=>s+kgOf(a.w,a.L,a.q),0))} kg`;
-    const n=picks.length+1;$("pkNo").value="TH"+$("day").value.replace(/-/g,"").slice(2)+"-"+String(n).padStart(2,"0");
+    $("pkNo").value=nextPickNo($("day").value,picks.length);
     $("pkCar").value="";$("pkDriver").value="";$("pkPhone").value="";$("pkMsg").textContent="";$("pkOk").disabled=false;$("pkDlg").showModal();return}
   const un=e.target.closest("[data-unpk]");
   if(un){const pid=un.dataset.unpk;if(unArm!==pid){unArm=pid;un.textContent="再点一次确认撤销";return}unArm=null;un.disabled=true;await undoPick(pid)}
@@ -568,8 +578,16 @@ $("pkOk").addEventListener("click",async()=>{
   const pid=pkPlant,d=$("day").value;if(!pid)return;$("pkOk").disabled=true;$("pkMsg").textContent="正在处理…";
   const doc={id:d+"_"+pid,d,plant:pid,no:$("pkNo").value.trim(),car:$("pkCar").value.trim(),driver:$("pkDriver").value.trim(),phone:$("pkPhone").value.trim(),at:Date.now(),moves:[],deducted:0,short:0};
   if($("pkDeduct").checked){
-    try{const recs=(await PD.query("d","==",d)).sort((a,b)=>(a.t||0)-(b.t||0));
-      const need={};alloc.filter(a=>a.plant===pid).forEach(a=>{const k=key(norm(a.m),+a.L,+a.w);need[k]=(need[k]||0)+a.q});
+    try{await deductPD(doc,alloc.filter(a=>a.plant===pid))}catch(err){$("pkMsg").textContent="读取车间盘点失败，请检查网络后再试。";$("pkOk").disabled=false;return}
+  }
+  await S.put("pick",doc);$("pkDlg").close();await loadAll();
+  say(`${plantName(pid)} 已确认提货，单号 ${doc.no}。`+($("pkDeduct").checked?` 已从车间盘点扣 ${fmt0(doc.deducted)} 支。`+(doc.short?` 还有 ${fmt0(doc.short)} 支在车间盘点里找不到对应的已入库货，没扣。`:""):""),!!doc.short);
+});
+/* 从车间盘点扣货：已入库 → 已出货（记下 moves 以便撤销） */
+async function deductPD(doc,list){
+  const d=doc.d,pid=doc.plant;
+  {const recs=(await PD.query("d","==",d)).sort((a,b)=>(a.t||0)-(b.t||0));
+      const need={};list.forEach(a=>{const k=key(norm(a.m),+a.L,+a.w);need[k]=(need[k]||0)+a.q});
       const t0=Date.now();let i=0;
       for(const [k,q0] of Object.entries(need)){let q=q0;
         for(const r of recs){if(q<=0)break;if(r.s!=="已入库"||!(r.q>0)||key(norm(r.m),+r.L,+r.w)!==k)continue;
@@ -579,11 +597,9 @@ $("pkOk").addEventListener("click",async()=>{
           else{const nid="sh-"+uid()+(i++);await PD.update(r.id,{q:r.q-take});
             await PD.put({id:nid,d,m:r.m,L:r.L,w:r.w,q:take,s:"已出货",n:note,p:r.p||"",t:(r.t||t0)+0.5});doc.moves.push({src:r.id,take,whole:false,nid});r.q-=take}}
         doc.short+=q}
-    }catch(err){$("pkMsg").textContent="读取车间盘点失败，请检查网络后再试。";$("pkOk").disabled=false;return}
   }
-  await S.put("pick",doc);$("pkDlg").close();await loadAll();
-  say(`${plantName(pid)} 已确认提货，单号 ${doc.no}。`+($("pkDeduct").checked?` 已从车间盘点扣 ${fmt0(doc.deducted)} 支。`+(doc.short?` 还有 ${fmt0(doc.short)} 支在车间盘点里找不到对应的已入库货，没扣。`:""):""),!!doc.short);
-});
+}
+function nextPickNo(d,n){return "TH"+d.replace(/-/g,"").slice(2)+"-"+String(n+1).padStart(2,"0")}
 async function undoPick(pid){
   const p=pickOf(pid);if(!p)return;
   try{if(p.moves&&p.moves.length){const recs=await PD.query("d","==",p.d);const byId=new Map(recs.map(r=>[r.id,r]));
@@ -682,6 +698,82 @@ $("impOk").addEventListener("click",async()=>{
   $("impDlg").close();pending=null;picked=null;await loadAll();
   const over=stock.map(s=>({s,a:allocated(key(s.m,s.L,s.w))})).filter(x=>x.a>x.s.q).length;
   say(`已导入 ${g.length} 个规格的库存。`+(over?` 注意：有 ${over} 个规格已分配的数量超过了新库存，表里剩余会显示负数。`:""),!!over);
+});
+
+/* ---------- import picked-up slips (已提货单) ---------- */
+let tiPend=null;
+function toDay(v){
+  if(v instanceof Date&&!isNaN(v))return v.toISOString().slice(0,10);
+  const t=String(v||"").trim();let m=/(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/.exec(t);
+  if(m)return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  m=/^(\d{1,2})[\/.月-](\d{1,2})/.exec(t);if(m){const y=$("day").value.slice(0,4);return `${y}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`}
+  return "";
+}
+async function parseTi(file){
+  const XL=await loadExcelJS();const wb=new XL.Workbook();await wb.xlsx.load(await file.arrayBuffer());
+  const ws=wb.getWorksheet("提货明细")||wb.worksheets[0];if(!ws)throw new Error("empty");
+  let hr=0,c={};
+  for(let r=1;r<=Math.min(10,ws.rowCount)&&!hr;r++){const x={};
+    ws.getRow(r).eachCell((cell,ci)=>{const t=String(cellVal(cell.value)||"").trim();
+      if(/^日期/.test(t))x.d=ci;else if(/加工厂/.test(t))x.p=ci;else if(/^客户/.test(t))x.c=ci;else if(/车牌/.test(t))x.car=ci;else if(/司机/.test(t)&&!/电话/.test(t))x.dr=ci;
+      else if(/电话/.test(t))x.ph=ci;else if(/单号/.test(t))x.no=ci;else if(/型号/.test(t))x.m=ci;else if(/长度/.test(t))x.L=ci;
+      else if(/理论支重|支重/.test(t)&&!/实际/.test(t))x.w=ci;else if(/^支数|^数量/.test(t))x.q=ci;else if(/过磅/.test(t))x.kg=ci;else if(/备注/.test(t))x.n=ci});
+    if(x.p&&x.c&&x.m&&x.L&&x.w&&x.q){hr=r;c=x}}
+  if(!hr)throw new Error("cols");
+  const out=[],g=(row,ci)=>ci?cellVal(row.getCell(ci).value):"",str=v=>String(v??"").trim();
+  for(let r=hr+1;r<=ws.rowCount;r++){const row=ws.getRow(r);const m=str(g(row,c.m)).toUpperCase();if(!m||/合计/.test(m))continue;
+    const L=parseFloat(g(row,c.L)),w=parseFloat(g(row,c.w)),q=parseInt(g(row,c.q),10),p=str(g(row,c.p)),cu=str(g(row,c.c));
+    if(!(L>0&&w>0&&q>0)||!p||!cu)continue;
+    const kg=parseFloat(g(row,c.kg));
+    out.push({r,d:toDay(g(row,c.d)),p,c:cu,car:str(g(row,c.car)),dr:str(g(row,c.dr)),ph:str(g(row,c.ph)),no:str(g(row,c.no)),m,L,w,q,kg:kg>0?kg:null,n:str(g(row,c.n)).replace(/^【需核对】/,"")})}
+  return out;
+}
+const findByName=(arr,n)=>arr.find(x=>norm(x.name)===norm(n));
+$("tiBtn").addEventListener("click",()=>$("tiFile").click());
+$("tiFile").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+  let rows;try{rows=await parseTi(f)}catch(err){say(err.message==="cols"?"这个 Excel 里找不到“加工厂、客户、型号、长度、理论支重、支数”这几列。":err.message==="load"?"表格组件没加载成功，请联网打开一次再试。":"读不了这个文件。",true);return}
+  if(!rows.length){say("文件里没有可导入的提货行。",true);return}
+  const days=[...new Set(rows.map(r=>r.d).filter(Boolean))];
+  if(days.length>1){say(`文件里有好几天的提货（${days.join("、")}），请一天一个文件导入。`,true);return}
+  const d=days[0]||$("day").value;
+  if($("day").value!==d){$("day").value=d;await loadAll()}
+  tiPend={rows,d,name:f.name};
+  const byP=new Map();rows.forEach(r=>{const x=byP.get(r.p)||{q:0,n:0,kg:0,car:r.car,dr:r.dr,cs:new Set()};x.q+=r.q;x.n++;x.kg+=kgOf(r.w,r.L,r.q);x.cs.add(r.c);if(!x.car&&r.car)x.car=r.car;if(!x.dr&&r.dr)x.dr=r.dr;byP.set(r.p,x)});
+  const newP=[...byP.keys()].filter(n=>!findByName(plants,n)),newC=[...new Set(rows.map(r=>r.c))].filter(n=>!findByName(custs,n));
+  const done=[...byP.keys()].filter(n=>{const p=findByName(plants,n);return p&&locked(p.id)});
+  const inStock=new Set(stock.map(s=>key(norm(s.m),+s.L,+s.w)));
+  const miss=stock.length?rows.filter(r=>!inStock.has(key(norm(r.m),r.L,r.w))):[];
+  tiPend.blocked=done;
+  $("tiBody").innerHTML=`<p style="margin:0 0 6px">文件：<b>${esc(f.name)}</b>　日期：<b>${d}</b>　共 ${rows.length} 笔，${fmt0(rows.reduce((s,r)=>s+r.q,0))} 支</p>
+    <div class="sumlist">${[...byP].map(([n,x])=>`<div class="sumrow"><span class="n">${esc(n)} <span class="sub">${x.n} 笔 · ${[...x.cs].map(esc).join("、")}${x.car?" · "+esc(x.car):""}</span></span><span class="v">${fmt0(x.q)} 支</span><span class="v">${fmt1(x.kg)} kg</span></div>`).join("")}</div>
+    ${newP.length||newC.length?`<p class="sub">会自动新建：${newP.length?"加工厂 "+newP.map(esc).join("、"):""}${newP.length&&newC.length?"；":""}${newC.length?"客户 "+newC.map(esc).join("、"):""}</p>`:""}
+    ${miss.length?`<p class="sub" style="color:var(--danger)">这 ${miss.length} 个规格在当天库存表里找不到（照样导入）：${miss.map(r=>esc(r.m+" "+r.L+"米/"+r.w)).join("、")}</p>`:""}
+    ${!stock.length?`<p class="sub">这一天还没导入库存，分配会照样记下来。</p>`:""}
+    ${done.length?`<p style="color:var(--danger);font-weight:700">${done.map(esc).join("、")} 这一天已经确认过提货了，不能再导入。要重新导入，先在右边汇总里“撤销提货”。</p>`:""}
+    <p class="sub">导入后：每一行变成一笔分配；每个加工厂自动“确认提货”（车牌、司机照表上填）。</p>`;
+  $("tiOk").disabled=!!done.length;$("tiMsg").textContent="";$("tiDlg").showModal();
+});
+$("tiCancel").addEventListener("click",()=>{tiPend=null;$("tiDlg").close()});
+$("tiOk").addEventListener("click",async()=>{
+  const P=tiPend;if(!P||P.blocked.length)return;$("tiOk").disabled=true;$("tiMsg").textContent="正在导入…";
+  try{
+    const d=P.d,deduct=$("tiDeduct").checked;
+    const pid={},cid={};
+    for(const r of P.rows){
+      if(!pid[r.p]){let p=findByName(plants,r.p);if(!p){p={id:uid(),name:r.p,contact:"",phone:"",addr:"",note:""};await S.put("plant",p);plants.push(p)}pid[r.p]=p.id}
+      if(!cid[r.c]){let c=findByName(custs,r.c);if(!c){c={id:uid(),name:r.c,contact:"",phone:"",plant:pid[r.p],note:""};await S.put("cust",c);custs.push(c)}cid[r.c]=c.id}}
+    const t0=Date.now(),list=P.rows.map((r,i)=>{const sm=stock.find(s=>key(norm(s.m),+s.L,+s.w)===key(norm(r.m),r.L,r.w));
+      return{id:`ti-${d}-${r.r}`,d,m:sm?sm.m:r.m,L:r.L,w:r.w,q:r.q,cust:cid[r.c],plant:pid[r.p],kg:r.kg,n:[r.kg?`过磅${r.kg}kg`:"",r.n].filter(Boolean).join("；"),t:t0+i}});
+    await S.putMany("alloc",list);
+    let n=picks.length,ded=0,short=0;const nos=[];
+    for(const name of Object.keys(pid)){const id=pid[name],rs=P.rows.filter(r=>r.p===name),f=rs.find(r=>r.car||r.dr||r.no)||{};
+      const doc={id:d+"_"+id,d,plant:id,no:f.no||nextPickNo(d,n++),car:f.car||"",driver:f.dr||"",phone:f.ph||"",at:Date.now(),moves:[],deducted:0,short:0,src:"import"};
+      if(deduct)await deductPD(doc,list.filter(a=>a.plant===id));
+      await S.put("pick",doc);ded+=doc.deducted;short+=doc.short;nos.push(name+" "+doc.no)}
+    $("tiDlg").close();tiPend=null;await loadAll();
+    say(`已导入 ${list.length} 笔提货，并确认提货：${nos.join("，")}。`+(deduct?` 已从车间盘点扣 ${fmt0(ded)} 支。`+(short?` 有 ${fmt0(short)} 支在车间盘点里找不到对应的已入库货，没扣（汇总里有红字标出是哪个厂）。`:""):""),!!short);
+  }catch(err){console.error(err);$("tiMsg").textContent="导入中断了，请检查网络。已导入的部分可以在分配记录里看到，可点“撤销提货”后再导一次。";$("tiOk").disabled=false}
 });
 
 /* ---------- export ---------- */
