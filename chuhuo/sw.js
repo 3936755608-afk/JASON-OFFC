@@ -1,4 +1,4 @@
-const CACHE="chuhuo-v3";
+const CACHE="chuhuo-v4";
 const FILES=["./","./index.html","./manifest.webmanifest","./icon-192.png","./icon-512.png","./apple-touch-icon.png","../exceljs.min.js","../lib/firebase-app-compat.js","../lib/firebase-auth-compat.js","../lib/firebase-firestore-compat.js","../lib/cloud.js"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith("chuhuo-")&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});

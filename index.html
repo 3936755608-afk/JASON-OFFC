@@ -16,7 +16,7 @@
 :root{
   --bg:#eef1f3; --panel:#ffffff; --ink:#1b2328; --muted:#5d6a72; --line:#d3dade; --soft:#e4e9ec;
   --accent:#1f5f7a; --accent-ink:#ffffff; --danger:#b3261e; --warn-bg:#fff4cc; --warn-ink:#6b4e00;
-  --st-in:#e2efda; --st-in-ink:#2f5d1e; --st-pk:#ddebf7; --st-pk-ink:#1f4e79; --st-new:#fce4d6; --st-new-ink:#8a3b0e; --len:#5b2fa8; --len-bg:#ece4fb; --wt:#b3125c; --wt-bg:#fde3ef;
+  --st-in:#e2efda; --st-in-ink:#2f5d1e; --st-pk:#ddebf7; --st-pk-ink:#1f4e79; --st-new:#fce4d6; --st-new-ink:#8a3b0e; --st-sh:#e4e4e4; --st-sh-ink:#555555; --len:#5b2fa8; --len-bg:#ece4fb; --wt:#b3125c; --wt-bg:#fde3ef;
   --f-body:"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
   --f-data:"SF Mono",ui-monospace,Menlo,monospace;
   --r:10px;
@@ -24,12 +24,12 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12171a; --panel:#1b2226; --ink:#e6ecef; --muted:#9aa8b0; --line:#2f3a40; --soft:#242d32;
   --accent:#5fb3d4; --accent-ink:#0d1a20; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a;
-  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
+  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --st-sh:#2b2b2b; --st-sh-ink:#b5b5b5; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12171a; --panel:#1b2226; --ink:#e6ecef; --muted:#9aa8b0; --line:#2f3a40; --soft:#242d32;
   --accent:#5fb3d4; --accent-ink:#0d1a20; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a;
-  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
+  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --st-sh:#2b2b2b; --st-sh-ink:#b5b5b5; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
   color-scheme:dark}
 *{box-sizing:border-box}
 html,body{background:var(--bg);color:var(--ink)}
@@ -152,7 +152,7 @@ table.grid.sm{--off:40px}
 .grid .c-idx{position:sticky;left:var(--off);z-index:2;width:44px;min-width:44px;text-align:center;color:var(--muted)}
 .grid .c-m{position:sticky;left:calc(var(--off) + 44px);z-index:2;font-weight:700;cursor:pointer;box-shadow:2px 0 0 var(--line)}
 .grid th.c-chk,.grid th.c-idx,.grid th.c-m{z-index:4;color:#fff}
-.grid tr.in td{background:var(--st-in)} .grid tr.pk td{background:var(--st-pk)} .grid tr.nw td{background:var(--st-new)}
+.grid tr.sh td{background:var(--st-sh);color:var(--st-sh-ink)} .grid tr.in td{background:var(--st-in)} .grid tr.pk td{background:var(--st-pk)} .grid tr.nw td{background:var(--st-new)}
 .grid tr.picked td{box-shadow:inset 0 0 0 9999px rgba(31,95,122,.14)}
 .grid tr.cur td{border-bottom:2px solid var(--accent)}
 .grid td.c-L{color:var(--len);font-weight:700} .grid td.c-w{color:var(--wt);font-weight:700}
@@ -186,6 +186,7 @@ table.grid.sm{--off:40px}
 .item .note{font-size:13px;color:var(--warn-ink);background:var(--warn-bg);border-radius:6px;padding:1px 8px;align-self:flex-start;overflow-wrap:anywhere}
 .item .side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .pill{font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;white-space:nowrap}
+.pill.sh{background:var(--st-sh);color:var(--st-sh-ink)}.item.sh .bar{background:var(--st-sh-ink)}.tcard.sh{background:var(--st-sh);color:var(--st-sh-ink);border-color:transparent}.tcard.sh .sm{color:inherit;opacity:.8}
 .pill.in{background:var(--st-in);color:var(--st-in-ink)}.pill.pk{background:var(--st-pk);color:var(--st-pk-ink)}.pill.nw{background:var(--st-new);color:var(--st-new-ink)}
 .mv{border:1px solid var(--st-in-ink);color:var(--st-in-ink);background:var(--st-in);border-radius:8px;padding:4px 10px;min-height:38px;font-size:13px;font-weight:700;white-space:nowrap}
 .empty{color:var(--muted);text-align:center;padding:40px 12px;font-size:15px}
@@ -296,6 +297,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
           <button type="button" data-f="已入库" aria-pressed="false">已入库</button>
           <button type="button" data-f="包装中" aria-pressed="false">包装中</button>
           <button type="button" data-f="刚生产" aria-pressed="false">刚生产</button>
+          <button type="button" data-f="已出货" aria-pressed="false">已出货</button>
         </div>
         <input id="q" placeholder="搜型号" spellcheck="false" autocapitalize="characters">
         <button type="button" class="btn" id="selBtn">多选</button>
@@ -330,7 +332,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 <script src="template.js"></script>
 <script>
 (function(){
-const ST=["已入库","包装中","刚生产"], CLS={"已入库":"in","包装中":"pk","刚生产":"nw"};
+const ST=["已入库","包装中","刚生产"], CLS={"已入库":"in","包装中":"pk","刚生产":"nw","已出货":"sh"}, SHIP="已出货";
 const $=id=>document.getElementById(id);
 const fmt0=n=>Number(n||0).toLocaleString("zh-CN",{maximumFractionDigits:0});
 const fmt1=n=>Number(n||0).toLocaleString("zh-CN",{minimumFractionDigits:1,maximumFractionDigits:1});
@@ -449,9 +451,9 @@ function startEdit(r){
 function visible(){const k=norm(search);return records.filter(r=>(!filter||r.s===filter)&&(!k||norm(r.m).includes(k)))}
 function renderTotals(){
   const agg={};ST.forEach(s=>agg[s]={n:0,q:0,kg:0});let all={n:0,q:0,kg:0};
-  records.forEach(r=>{if(!(r.q>0))return;const kg=r.w/6*r.L*r.q,a=agg[r.s]||(agg[r.s]={n:0,q:0,kg:0});a.n++;a.q+=r.q;a.kg+=kg;all.n++;all.q+=r.q;all.kg+=kg});
+  records.forEach(r=>{if(!(r.q>0))return;const kg=r.w/6*r.L*r.q,a=agg[r.s]||(agg[r.s]={n:0,q:0,kg:0});a.n++;a.q+=r.q;a.kg+=kg;if(r.s!==SHIP){all.n++;all.q+=r.q;all.kg+=kg}});
   const card=(cls,lab,a)=>`<div class="tcard ${cls}"><div class="lab"><span>${lab}</span><span class="num">${a.n} 行</span></div><div class="big">${fmt0(a.q)}<span style="font-size:13px"> 支</span></div><div class="sm">${fmt1(a.kg)} kg</div></div>`;
-  $("totals").innerHTML=card("in","已入库",agg["已入库"])+card("pk","包装中",agg["包装中"])+card("nw","刚生产",agg["刚生产"])+card("","合计",all);
+  $("totals").innerHTML=card("in","已入库",agg["已入库"])+card("pk","包装中",agg["包装中"])+card("nw","刚生产",agg["刚生产"])+(agg[SHIP]&&agg[SHIP].n?card("sh","已出货",agg[SHIP]):"")+card("",agg[SHIP]&&agg[SHIP].n?"在库合计":"合计",all);
 }
 let selMode=false,sel=new Set(),selArm=false;
 let view="table",editQ=null,editS=null;
@@ -465,9 +467,9 @@ function renderTable(v){
   const rows=v.map((r,i)=>{const c=CLS[r.s]||"nw",pend=r.q==null,kg=r.q>0?r.w/6*r.L*r.q:0;if(r.q>0){tq+=r.q;tkg+=kg;tn++}
     const flag=(r.n||"").startsWith("【需核对】");
     const qcell=editQ===r.id?`<td class="c-q editing" data-q="${r.id}"><input id="cellQ" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" value="${r.q!=null?r.q:""}" autocomplete="off"><button type="button" class="nx" data-nx="${r.id}" aria-label="保存并到下一行">↓</button></td>`
-      :`<td class="c-q" data-q="${r.id}">${pend?`<span class="pend">待填${r.pq!=null?" · 上次"+fmt0(r.pq):""}</span>`:fmt0(r.q)}</td>`;
+      :r.s===SHIP?`<td class="c-q" title="已出货，由出货App管理">${fmt0(r.q)}</td>`:`<td class="c-q" data-q="${r.id}">${pend?`<span class="pend">待填${r.pq!=null?" · 上次"+fmt0(r.pq):""}</span>`:fmt0(r.q)}</td>`;
     const scell=editS===r.id?`<td class="c-s" data-s="${r.id}"><span class="opts">${ST.map(x=>`<button type="button" class="pill ${CLS[x]}" data-ss="${x}" data-sid="${r.id}">${x}</button>`).join("")}</span></td>`
-      :`<td class="c-s" data-s="${r.id}"><span class="pill ${c}">${esc(r.s)}</span></td>`;
+      :r.s===SHIP?`<td class="c-s" title="已出货，要撤销请在出货App里点“撤销提货”"><span class="pill ${c}">${esc(r.s)}</span></td>`:`<td class="c-s" data-s="${r.id}"><span class="pill ${c}">${esc(r.s)}</span></td>`;
     return `<tr class="${c}${sel.has(r.id)?" picked":""}${qkId===r.id?" cur":""}" data-id="${r.id}">${selMode?`<td class="c-chk"><span class="chk${sel.has(r.id)?" on":""}" data-pick="${r.id}" role="checkbox" aria-checked="${sel.has(r.id)}" tabindex="0" style="margin:auto">${sel.has(r.id)?"✓":""}</span></td>`:""}<td class="c-idx">${i+1}</td><td class="c-m tl" data-edit="${r.id}">${esc(r.m)}</td><td class="c-L">${r.L}</td><td class="c-w">${r.w}</td><td>${(r.w/6*r.L).toFixed(4)}</td>${qcell}<td>${r.q>0?fmt1(kg):""}</td>${scell}<td class="c-n${flag?" flag":""}" title="${esc(r.n||"")}">${esc(r.n||"")}</td></tr>`}).join("");
   $("list").innerHTML=`<div class="tblwrap"><table class="grid${selMode?" sm":""}"><thead><tr>${selMode?'<th class="c-chk"></th>':""}<th class="c-idx">序号</th><th class="c-m tl">型号</th><th>长度(米)</th><th>理论支重</th><th>实际支重</th><th>支数</th><th>重量(kg)</th><th>状态</th><th class="tl">备注</th></tr></thead><tbody>${rows}</tbody>
     <tfoot><tr>${selMode?'<td class="c-chk"></td>':""}<td class="c-idx"></td><td class="c-m tl">合计 ${tn} 行</td><td></td><td></td><td></td><td>${fmt0(tq)}</td><td>${fmt1(tkg)}</td><td></td><td></td></tr></tfoot></table></div>`;
@@ -522,8 +524,8 @@ function renderList(){
         <div class="l2"><span class="tL">${r.L}米</span> <span class="tW">支重 ${r.w}</span> · 实际 ${(r.w/6*r.L).toFixed(4)}${pend?"":" · "+fmt1(kg)+" kg"}${r.p?" · "+esc(r.p):""}</div>
         ${r.n?`<div class="note">${esc(r.n)}</div>`:""}
       </div>
-      <div class="side"><span class="pill ${c}">${esc(r.s)}</span>${r.s!=="已入库"?`<button type="button" class="mv" data-in="${r.id}">入库 ✓</button>`:""}</div></div>`}).join("");
-  const movable=v.filter(r=>r.s!=="已入库");
+      <div class="side"><span class="pill ${c}">${esc(r.s)}</span>${r.s!=="已入库"&&r.s!==SHIP?`<button type="button" class="mv" data-in="${r.id}">入库 ✓</button>`:""}</div></div>`}).join("");
+  const movable=v.filter(r=>r.s!=="已入库"&&r.s!==SHIP);
   if(movable.length>1&&(filter==="包装中"||filter==="刚生产"||search)){
     $("bulk").hidden=false;
     $("bulk").innerHTML=bulkArm?`<span>确定把这 ${movable.length} 行都改成已入库？</span><button type="button" class="btn primary" id="bulkYes">确定</button><button type="button" class="btn" id="bulkNo">取消</button>`
@@ -550,7 +552,7 @@ $("list").addEventListener("keydown",e=>{if(selMode&&(e.key===" "||e.key==="Ente
 $("bulk").addEventListener("click",async e=>{
   if(e.target.id==="bulkGo"){bulkArm=true;renderList();return}
   if(e.target.id==="bulkNo"){bulkArm=false;renderList();return}
-  if(e.target.id==="bulkYes"){const ids=visible().filter(r=>r.s!=="已入库").map(r=>r.id);bulkArm=false;
+  if(e.target.id==="bulkYes"){const ids=visible().filter(r=>r.s!=="已入库"&&r.s!==SHIP).map(r=>r.id);bulkArm=false;
     let fail=0;for(const id of ids){try{await S.update(id,{s:"已入库"})}catch(err){fail++}}await loadDay();
     say(fail?`有 ${fail} 行没改成功，请再试一次。`:`已把 ${ids.length} 行改为已入库`,!!fail)}
 });
@@ -639,7 +641,7 @@ let lastDayInfo=null, pendArm=false;
 async function findLastDay(){
   try{let cur=$("day").value;
     for(let k=0;k<5;k++){const d=await S.lastDayBefore(cur);if(!d)return null;
-      const rows=(await S.dayOnce(d)).filter(r=>r.q>0);if(rows.length)return{d,rows:rows.sort((a,b)=>(a.t||0)-(b.t||0))};cur=d}
+      const rows=(await S.dayOnce(d)).filter(r=>r.q>0&&r.s!==SHIP);if(rows.length)return{d,rows:rows.sort((a,b)=>(a.t||0)-(b.t||0))};cur=d}
     return null}catch(e){return null}
 }
 function renderStart(){
@@ -654,7 +656,7 @@ function renderStart(){
 async function buildDay(rows){
   const day=$("day").value,t0=Date.now();
   const seen=new Set(records.map(r=>r.m+"|"+r.L+"|"+r.w+"|"+r.s)),list=[];
-  rows.forEach(r=>{const k=r.m+"|"+r.L+"|"+r.w+"|"+r.s;if(seen.has(k))return;seen.add(k);list.push(r)});
+  rows.forEach(r=>{if(r.s===SHIP)return;const k=r.m+"|"+r.L+"|"+r.w+"|"+r.s;if(seen.has(k))return;seen.add(k);list.push(r)});
   await S.addMany(list.map((r,i)=>({d:day,m:r.m,L:r.L,w:r.w,s:r.s||"已入库",q:null,pq:(r.q>0?r.q:null),n:"",p:"",t:t0+i})));
   await loadDay();say(list.length?`已排好 ${list.length} 个型号，开始逐个填支数。`:"清单里的型号今天都已经有了。");if(list.length)openQuick();
 }
@@ -813,7 +815,8 @@ async function buildWorkbook(XL,recs,day){
   const wb=new XL.Workbook();
   const F={name:"Arial",size:10}, FB={name:"Arial",size:10,bold:true}, FH={name:"Arial",size:10,bold:true,color:{argb:"FFFFFFFF"}};
   const fill=c=>({type:"pattern",pattern:"solid",fgColor:{argb:"FF"+c}});
-  const SC={"已入库":"E2EFDA","包装中":"DDEBF7","刚生产":"FCE4D6"};
+  const SC={"已入库":"E2EFDA","包装中":"DDEBF7","刚生产":"FCE4D6","已出货":"D9D9D9"};
+  const EX=ST.concat(recs.some(r=>r.s===SHIP)?[SHIP]:[]),NS=EX.length,CL=i=>String.fromCharCode(65+i);
   const thin={style:"thin",color:{argb:"FFBFBFBF"}}, BD={top:thin,left:thin,bottom:thin,right:thin};
   const head=(ws,cols)=>{const r=ws.addRow(cols);r.height=30;r.eachCell(c=>{c.font=FH;c.fill=fill("305496");c.border=BD;c.alignment={horizontal:"center",vertical:"middle",wrapText:true}})};
   // order: by original page then entry time
@@ -831,7 +834,7 @@ async function buildWorkbook(XL,recs,day){
     row.eachCell({includeEmpty:true},(c,col)=>{c.font=F;c.border=BD;if(col<=10)c.alignment={horizontal:"center"}});
     ws.getCell(`D${k}`).numFmt="0.00";ws.getCell(`F${k}`).numFmt="0.000";ws.getCell(`G${k}`).numFmt="0.0000";
     ws.getCell(`H${k}`).numFmt="#,##0";ws.getCell(`I${k}`).numFmt="#,##0.0";ws.getCell(`J${k}`).numFmt="#,##0.0";
-    ws.getCell(`C${k}`).dataValidation={type:"list",allowBlank:false,formulae:['"已入库,包装中,刚生产"'],showErrorMessage:true,errorTitle:"状态",error:"请从下拉中选择：已入库 / 包装中 / 刚生产"};
+    ws.getCell(`C${k}`).dataValidation={type:"list",allowBlank:false,formulae:['"'+EX.join(",")+'"'],showErrorMessage:true,errorTitle:"状态",error:"请从下拉中选择："+EX.join(" / ")};
     if((r.n||"").startsWith("【需核对】")){const c=ws.getCell(`K${k}`);c.fill=fill("FFFF00");c.font={name:"Arial",size:10,bold:true,color:{argb:"FFC00000"}}}
   });
   const sum=(col)=>recs.reduce((a,r)=>a+col(r),0);
@@ -840,39 +843,43 @@ async function buildWorkbook(XL,recs,day){
   tr.getCell(8).value={formula:`SUM(H2:H${n})`,result:sum(r=>r.q)};tr.getCell(9).value={formula:`SUM(I2:I${n})`,result:sum(r=>r.L*r.q)};tr.getCell(10).value={formula:`SUM(J2:J${n})`,result:sum(r=>r.w/6*r.L*r.q)};
   for(let c=1;c<=11;c++){const x=tr.getCell(c);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}
   tr.getCell(8).numFmt="#,##0";tr.getCell(9).numFmt="#,##0.0";tr.getCell(10).numFmt="#,##0.0";
-  ST.forEach(s=>ws.addConditionalFormatting({ref:`A2:J${n}`,rules:[{type:"expression",formulae:[`$C2="${s}"`],style:{fill:{type:"pattern",pattern:"solid",bgColor:{argb:"FF"+SC[s]}}}}]}));
-  const notes=["颜色说明（改“状态”列下拉，颜色和汇总会自动跟着变）：","绿色 = 已入库","蓝色 = 包装中","橙色 = 刚生产","备注栏黄底红字 = 需核对","实际支重=理论支重÷6×实际长度；理论重量=实际支重×支数（照片上的支重为6米理论支重）。"];
-  notes.forEach((x,i)=>{const c=ws.getCell(`C${t+2+i}`);c.value=x;c.font=i===0?FB:F;if(i>=1&&i<=3)ws.getCell(`B${t+2+i}`).fill=fill(SC[ST[i-1]]);if(i===4)ws.getCell(`B${t+2+i}`).fill=fill("FFFF00")});
+  EX.forEach(s=>ws.addConditionalFormatting({ref:`A2:J${n}`,rules:[{type:"expression",formulae:[`$C2="${s}"`],style:{fill:{type:"pattern",pattern:"solid",bgColor:{argb:"FF"+SC[s]}}}}]}));
+  const notes=["颜色说明（改“状态”列下拉，颜色和汇总会自动跟着变）：","绿色 = 已入库","蓝色 = 包装中","橙色 = 刚生产",...(NS>3?["灰色 = 已出货（出货App确认提货后自动转入）"]:[]),"备注栏黄底红字 = 需核对","实际支重=理论支重÷6×实际长度；理论重量=实际支重×支数（照片上的支重为6米理论支重）。"];
+  notes.forEach((x,i)=>{const c=ws.getCell(`C${t+2+i}`);c.value=x;c.font=i===0?FB:F;if(i>=1&&i<=NS)ws.getCell(`B${t+2+i}`).fill=fill(SC[EX[i-1]]);if(i===NS+1)ws.getCell(`B${t+2+i}`).fill=fill("FFFF00")});
   [6,8,9,9,14,12,12,10,11,13,52].forEach((w,i)=>ws.getColumn(i+1).width=w);
   ws.autoFilter=`A1:K${n}`;
 
   // summary by model
-  head(ss,["型号","长度(米)","理论支重(kg/6米)","实际支重(kg/支)","已入库(支)","包装中(支)","刚生产(支)","数量合计(支)","理论重量合计(kg)"]);
+  head(ss,["型号","长度(米)","理论支重(kg/6米)","实际支重(kg/支)",...EX.map(s=>s+"(支)"),"数量合计(支)","理论重量合计(kg)"]);
+  const cT=CL(4+NS),cW=CL(5+NS),cLast=CL(3+NS);
   const keys=[...new Map(recs.map(r=>[r.m+"|"+r.L+"|"+r.w,{m:r.m,L:r.L,w:r.w}])).values()].sort((a,b)=>a.m<b.m?-1:a.m>b.m?1:a.L-b.L||a.w-b.w);
   const R=c=>`明细!$${c}$2:$${c}$${n}`;
   keys.forEach((g,i)=>{const k=i+2,crit=`${R("E")},A${k},${R("D")},B${k},${R("F")},C${k}`;
     const mine=recs.filter(r=>r.m===g.m&&r.L===g.L&&r.w===g.w);const q=s=>mine.filter(r=>r.s===s).reduce((a,r)=>a+r.q,0);
     const row=ss.addRow([g.m,g.L,g.w,{formula:`C${k}/6*B${k}`,result:g.w/6*g.L},
-      ...ST.map(s=>({formula:`SUMIFS(${R("H")},${crit},${R("C")},"${s}")`,result:q(s)})),
-      {formula:`SUM(E${k}:G${k})`,result:mine.reduce((a,r)=>a+r.q,0)},{formula:`SUMIFS(${R("J")},${crit})`,result:mine.reduce((a,r)=>a+r.w/6*r.L*r.q,0)}]);
+      ...EX.map(s=>({formula:`SUMIFS(${R("H")},${crit},${R("C")},"${s}")`,result:q(s)})),
+      {formula:`SUM(E${k}:${cLast}${k})`,result:mine.reduce((a,r)=>a+r.q,0)},{formula:`SUMIFS(${R("J")},${crit})`,result:mine.reduce((a,r)=>a+r.w/6*r.L*r.q,0)}]);
     row.eachCell((c,col)=>{c.font=F;c.border=BD;if(col>1)c.alignment={horizontal:"center"}});
-    ["B","C","D","E","F","G","H","I"].forEach((c,j)=>ss.getCell(`${c}${k}`).numFmt=["0.00","0.000","0.0000","#,##0","#,##0","#,##0","#,##0","#,##0.0"][j]);
-    ["E","F","G"].forEach((c,j)=>ss.getCell(`${c}${k}`).fill=fill(SC[ST[j]]));
+    ss.getCell(`B${k}`).numFmt="0.00";ss.getCell(`C${k}`).numFmt="0.000";ss.getCell(`D${k}`).numFmt="0.0000";
+    for(let j=0;j<=NS;j++)ss.getCell(`${CL(4+j)}${k}`).numFmt="#,##0";ss.getCell(`${cW}${k}`).numFmt="#,##0.0";
+    EX.forEach((s,j)=>ss.getCell(`${CL(4+j)}${k}`).fill=fill(SC[s]));
   });
   const e=keys.length+1, sr=ss.getRow(e+1);sr.getCell(1).value="合计";
-  ["E","F","G","H","I"].forEach((c,j)=>{const x=ss.getCell(`${c}${e+1}`);x.value={formula:`SUM(${c}2:${c}${e})`,result:[...ST.map(s=>sum(r=>r.s===s?r.q:0)),sum(r=>r.q),sum(r=>r.w/6*r.L*r.q)][j]};x.numFmt=c==="I"?"#,##0.0":"#,##0"});
-  for(let c=1;c<=9;c++){const x=sr.getCell(c);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}
-  [16,10,14,14,12,12,12,14,18].forEach((w,i)=>ss.getColumn(i+1).width=w);
-  ss.autoFilter=`A1:I${e}`;
+  const tot=[...EX.map(s=>sum(r=>r.s===s?r.q:0)),sum(r=>r.q),sum(r=>r.w/6*r.L*r.q)];
+  tot.forEach((v,j)=>{const c=CL(4+j),x=ss.getCell(`${c}${e+1}`);x.value={formula:`SUM(${c}2:${c}${e})`,result:v};x.numFmt=c===cW?"#,##0.0":"#,##0"});
+  for(let c=1;c<=6+NS;c++){const x=sr.getCell(c);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}
+  [16,10,14,14,...EX.map(()=>12),14,18].forEach((w,i)=>ss.getColumn(i+1).width=w);
+  ss.autoFilter=`A1:${cW}${e}`;
 
   // summary by status
   head(zs,["状态","行数","数量合计(支)","理论重量合计(kg)"]);
-  ST.forEach((s,i)=>{const k=i+2,mine=recs.filter(r=>r.s===s);
+  EX.forEach((s,i)=>{const k=i+2,mine=recs.filter(r=>r.s===s);
     const row=zs.addRow([s,{formula:`COUNTIF(${R("C")},A${k})`,result:mine.length},{formula:`SUMIFS(${R("H")},${R("C")},A${k})`,result:mine.reduce((a,r)=>a+r.q,0)},{formula:`SUMIFS(${R("J")},${R("C")},A${k})`,result:mine.reduce((a,r)=>a+r.w/6*r.L*r.q,0)}]);
     row.eachCell(c=>{c.font=F;c.border=BD;c.fill=fill(SC[s]);c.alignment={horizontal:"center"}});zs.getCell(`C${k}`).numFmt="#,##0";zs.getCell(`D${k}`).numFmt="#,##0.0"});
-  const zr=zs.addRow(["合计",{formula:"SUM(B2:B4)",result:recs.length},{formula:"SUM(C2:C4)",result:sum(r=>r.q)},{formula:"SUM(D2:D4)",result:sum(r=>r.w/6*r.L*r.q)}]);
-  zr.eachCell(c=>{c.font=FB;c.border=BD;c.fill=fill("D9E1F2");c.alignment={horizontal:"center"}});zs.getCell("C5").numFmt="#,##0";zs.getCell("D5").numFmt="#,##0.0";
-  zs.getCell("A7").value=`盘点日期：${day}`;zs.getCell("A7").font=F;
+  const zl=NS+1,zt=NS+2;
+  const zr=zs.addRow(["合计",{formula:`SUM(B2:B${zl})`,result:recs.length},{formula:`SUM(C2:C${zl})`,result:sum(r=>r.q)},{formula:`SUM(D2:D${zl})`,result:sum(r=>r.w/6*r.L*r.q)}]);
+  zr.eachCell(c=>{c.font=FB;c.border=BD;c.fill=fill("D9E1F2");c.alignment={horizontal:"center"}});zs.getCell(`C${zt}`).numFmt="#,##0";zs.getCell(`D${zt}`).numFmt="#,##0.0";
+  zs.getCell(`A${zt+2}`).value=`盘点日期：${day}`;zs.getCell(`A${zt+2}`).font=F;
   [10,8,14,18].forEach((w,i)=>zs.getColumn(i+1).width=w);
   return wb.xlsx.writeBuffer();
 }
