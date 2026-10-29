@@ -222,7 +222,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     </div>
     <button class="btn primary" id="quickTop" type="button">快速填数</button>
     <button class="btn" id="exportBtn" type="button">导出 Excel</button>
-    <div class="sync ok" id="sync"><i></i><span>本机保存</span></div>
+    <div class="sync" id="cloudStatus"><i></i><span>连接中…</span></div>
   </header>
   <div class="banner" id="banner" hidden></div>
 
@@ -312,7 +312,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     <button class="btn" type="button" id="restoreBtn">从备份恢复</button>
     <input type="file" id="restoreFile" accept=".json,application/json" hidden>
   </div>
-  <div class="foot">数据只保存在这台 iPad 上。点一条记录可以修改，点“入库 ✓”一键改为已入库。建议每天导出 Excel，每周备份一次。</div>
+  <div class="more" id="migBox" hidden><button class="btn primary" type="button" id="migBtn">把这台设备上的旧数据上传到云端</button></div>
+  <div class="foot">数据保存在你的云端账号里，电脑、iPad、手机登录同一个账号自动同步，没网时也能用。<span id="who"></span> <button class="btn" type="button" id="logoutBtn" style="min-height:32px;padding:2px 10px;font-size:12px">退出登录</button></div>
   <dialog id="catDlg">
     <h2 style="margin:0 0 8px;font-size:16px">型号库 <span class="sub num" id="catCount"></span></h2>
     <input id="catQ" placeholder="搜型号" style="width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px">
@@ -321,6 +322,10 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   </dialog>
 </div>
 
+<script src="lib/firebase-app-compat.js"></script>
+<script src="lib/firebase-auth-compat.js"></script>
+<script src="lib/firebase-firestore-compat.js"></script>
+<script src="lib/cloud.js"></script>
 <script src="catalog.js"></script>
 <script src="template.js"></script>
 <script>
@@ -338,7 +343,7 @@ let db=true, catalog=[], records=[], unsubRec=null, editing=null, status="刚生
 $("day").value=today();
 try{const s=localStorage.getItem("wc_status");if(ST.includes(s))status=s}catch(e){}
 
-function setSync(state,text){const el=$("sync");el.className="sync "+(state||"");el.querySelector("span").textContent=text}
+function setSync(state,text){if(state==="bad"){const b=$("banner");b.hidden=false;b.textContent=text}}
 function say(t,err){const m=$("msg");m.textContent=t||"";m.className="msg"+(err?" err":"")}
 
 /* ---------- status segment ---------- */
@@ -553,7 +558,7 @@ $("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)
 $("q").addEventListener("input",()=>{search=$("q").value;bulkArm=false;renderList()});
 
 /* ---------- data (IndexedDB on this device) ---------- */
-const S=(()=>{
+const LocalS=(()=>{
   let dbp=null;
   const open=()=>dbp||(dbp=new Promise((ok,bad)=>{const r=indexedDB.open("chejian-pandian",1);
     r.onupgradeneeded=()=>{const d=r.result;const st=d.createObjectStore("records",{keyPath:"id"});st.createIndex("d","d");d.createObjectStore("kv")};
@@ -573,12 +578,31 @@ const S=(()=>{
     setCat:items=>tx("kv","readwrite",st=>st.put(items,"catalog")),
   };
 })();
+/* cloud-backed store, same calls as before */
+const S=(()=>{
+  const R=Cloud.store("pandian_records"),KV=Cloud.kv("pandian_kv");
+  const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  return{
+    byDay:d=>R.byDay(d),all:()=>R.allOnce(),
+    add:async rec=>{const id=uid();await R.put(Object.assign({id},rec));return id},
+    put:rec=>R.put(rec),
+    addMany:recs=>R.putMany(recs.map(r=>Object.assign({id:uid()+Math.random().toString(36).slice(2,5)},r))),
+    putMany:recs=>R.putMany(recs),
+    delMany:ids=>R.delMany(ids),update:(id,p)=>R.update(id,p),del:id=>R.del(id),
+    getCat:()=>KV.get("catalog"),setCat:items=>KV.set("catalog",items),
+    lastDayBefore:d=>R.lastDayBefore(d),dayOnce:d=>R.query("d","==",d),
+  };
+})();
 async function loadDay(){
   try{const rs=await S.byDay($("day").value);records=rs.sort((a,b)=>(a.t||0)-(b.t||0));render()}
   catch(e){setSync("bad","读取失败");$("list").innerHTML=`<div class="empty">读取记录失败，请关掉 App 重新打开。</div>`}
 }
 $("day").addEventListener("change",()=>{resetForm();closeQuick();loadDay()});
+let remoteT=null;
+Cloud.onRemote=()=>{clearTimeout(remoteT);remoteT=setTimeout(()=>{if(document.getElementById("cellQ")||(document.activeElement&&document.activeElement.closest&&document.activeElement.closest("#form")))return;_loadDay?_loadDay():loadDay()},300)};
 (async()=>{
+  try{await Cloud.ready}catch(e){}
+  $("who").textContent="当前账号："+(Cloud.email()||"");
   try{
     let c=await S.getCat();
     if(!Array.isArray(c)){c=(window.BASE_CATALOG||[]).slice();await S.setCat(c)}
@@ -586,7 +610,18 @@ $("day").addEventListener("change",()=>{resetForm();closeQuick();loadDay()});
   }catch(e){catalog=(window.BASE_CATALOG||[]).slice();$("banner").hidden=false;$("banner").textContent="这台设备不能保存数据（可能开了无痕浏览）。请用普通模式打开。"}
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   loadDay();
+  try{const old=await LocalS.all();let done=false;try{done=localStorage.getItem("wc_migrated")==="1"}catch(e){}
+    if(old.length&&!done){$("migBox").hidden=false;$("migBtn").textContent=`把这台设备上的旧数据（${old.length} 条）上传到云端`}}catch(e){}
 })();
+$("logoutBtn").addEventListener("click",()=>Cloud.signOut());
+$("migBtn").addEventListener("click",async()=>{
+  const b=$("migBtn");b.disabled=true;b.textContent="正在上传…";
+  try{const old=await LocalS.all();await S.putMany(old.filter(r=>r&&r.id&&r.d&&r.m));
+    const oc=await LocalS.getCat();if(Array.isArray(oc)){const have=new Set(catalog.map(x=>x.m+"|"+x.L+"|"+x.w));oc.forEach(x=>{if(x&&x.m&&!have.has(x.m+"|"+x.L+"|"+x.w)){catalog.push(x);have.add(x.m+"|"+x.L+"|"+x.w)}});await S.setCat(catalog)}
+    try{localStorage.setItem("wc_migrated","1")}catch(e){}
+    $("migBox").hidden=true;say(`已把 ${old.length} 条旧记录上传到云端。其他设备登录后就能看到。`);loadDay()}
+  catch(e){b.disabled=false;b.textContent="上传失败，点这里再试一次"}
+});
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(()=>{})})}
 
 /* ---------- share / save a file ---------- */
@@ -602,10 +637,10 @@ async function shareFile(blob,name){
 /* ---------- checklist: start the day from a template ---------- */
 let lastDayInfo=null, pendArm=false;
 async function findLastDay(){
-  try{const all=await S.all();const cur=$("day").value;const by={};
-    all.forEach(r=>{if(r.d<cur&&r.q>0)(by[r.d]=by[r.d]||[]).push(r)});
-    const days=Object.keys(by).sort();if(!days.length)return null;const d=days[days.length-1];
-    return{d,rows:by[d].sort((a,b)=>(a.t||0)-(b.t||0))}}catch(e){return null}
+  try{let cur=$("day").value;
+    for(let k=0;k<5;k++){const d=await S.lastDayBefore(cur);if(!d)return null;
+      const rows=(await S.dayOnce(d)).filter(r=>r.q>0);if(rows.length)return{d,rows:rows.sort((a,b)=>(a.t||0)-(b.t||0))};cur=d}
+    return null}catch(e){return null}
 }
 function renderStart(){
   const base=new Set((window.BASE_TEMPLATE||[]).map(r=>r.m+"|"+r.L+"|"+r.w+"|"+r.s)).size;
@@ -645,7 +680,8 @@ $("pend").addEventListener("click",async e=>{
   if(e.target.id==="pendYes"){pendArm=false;await S.delMany(records.filter(r=>r.q==null).map(r=>r.id));closeQuick();await loadDay();say("已删除未填的型号。")}
 });
 const _loadDay=loadDay;
-loadDay=async function(){lastDayInfo=await findLastDay();await _loadDay()};
+let lastDayFor=null;
+loadDay=async function(){const d=$("day").value;if(lastDayFor!==d){lastDayFor=d;lastDayInfo=await findLastDay()}await _loadDay()};
 
 /* ---------- quick fill with big keypad ---------- */
 $("quickTop").addEventListener("click",async()=>{
@@ -733,7 +769,7 @@ $("restoreBtn").addEventListener("click",()=>$("restoreFile").click());
 $("restoreFile").addEventListener("change",async e=>{
   const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
   try{const data=JSON.parse(await f.text());if(!data||!Array.isArray(data.records))throw 0;
-    let n=0;for(const r of data.records){if(r&&r.id&&r.d&&r.m){await S.put(r);n++}}
+    const ok=data.records.filter(r=>r&&r.id&&r.d&&r.m);await S.putMany(ok);const n=ok.length;
     if(Array.isArray(data.catalog)){const have=new Set(catalog.map(x=>x.m+"|"+x.L+"|"+x.w));data.catalog.forEach(x=>{if(x&&x.m&&!have.has(x.m+"|"+x.L+"|"+x.w))catalog.push(x)});await S.setCat(catalog)}
     say(`已恢复 ${n} 条记录。`);loadDay()}
   catch(err){say("这个文件不是车间盘点的备份，没有恢复。",true)}

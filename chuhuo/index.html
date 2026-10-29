@@ -53,6 +53,9 @@ header.top h1{font-size:22px;margin:0;letter-spacing:.02em}
 .datebox{display:flex;align-items:center;gap:6px}
 .datebox input{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 10px;min-height:40px}
 .msg{font-size:14px;min-height:21px;color:var(--muted)}.msg.err{color:var(--danger)}
+.sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.sync.ok i{background:#3b9a4c}.sync.bad i{background:var(--danger)}
 .banner{background:var(--part-bg);border-radius:8px;padding:10px 14px;font-size:14px}
 
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
@@ -145,11 +148,13 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     <div><h1>出货分配</h1><div class="sub">导入当天库存 → 搜型号 → 分给客户和加工厂 → 导出提货单</div></div>
     <div class="grow"></div>
     <div class="datebox"><label for="day" class="sub">日期</label><input type="date" id="day"></div>
-    <button class="btn primary" id="impBtn" type="button">导入当天库存</button>
+    <button class="btn primary" id="pdBtn" type="button">读取车间盘点库存</button>
+    <button class="btn" id="impBtn" type="button">导入文件</button>
     <input type="file" id="impFile" accept=".xlsx,.json" hidden>
     <button class="btn" id="dataBtn" type="button">客户 / 加工厂资料</button>
     <button class="btn" id="slipBtn" type="button">导出提货单</button>
     <button class="btn" id="sumBtn" type="button">导出当日总表</button>
+    <div class="sync" id="cloudStatus"><i></i><span>连接中…</span></div>
   </header>
   <div class="banner" id="banner" hidden></div>
   <div class="msg" id="msg" role="status"></div>
@@ -198,7 +203,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     <button class="btn" type="button" id="restoreBtn">从备份恢复</button>
     <input type="file" id="restoreFile" accept=".json" hidden>
   </div>
-  <div class="foot">所有资料只保存在这台电脑的浏览器里，不会上传。建议每天导出总表，每周备份一次。</div>
+  <div class="more" id="migBox" hidden><button class="btn primary" type="button" id="migBtn">把这台设备上的旧数据上传到云端</button></div>
+  <div class="foot">资料保存在你的云端账号里，电脑、iPad、手机登录同一个账号自动同步，没网时也能用。<span id="who"></span> <button class="btn" type="button" id="logoutBtn" style="min-height:30px;padding:2px 10px;font-size:12px">退出登录</button></div>
 </div>
 
 <dialog id="dataDlg">
@@ -230,6 +236,10 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn primary" type="button" id="impOk">导入</button><button class="btn" type="button" id="impCancel">取消</button></div>
 </dialog>
 
+<script src="../lib/firebase-app-compat.js"></script>
+<script src="../lib/firebase-auth-compat.js"></script>
+<script src="../lib/firebase-firestore-compat.js"></script>
+<script src="../lib/cloud.js"></script>
 <script>
 (function(){
 const $=id=>document.getElementById(id);
@@ -245,7 +255,11 @@ function say(t,err){$("msg").textContent=t||"";$("msg").className="msg"+(err?" e
 function aSay(t,err){$("aMsg").textContent=t||"";$("aMsg").className="msg"+(err?" err":"")}
 
 /* ---------- storage (IndexedDB, this computer only) ---------- */
-const S=(()=>{let dbp=null;
+const S=(()=>{const st={stock:Cloud.store("chuhuo_stock"),alloc:Cloud.store("chuhuo_alloc"),cust:Cloud.store("chuhuo_cust"),plant:Cloud.store("chuhuo_plant")};
+  return{byDay:(k,d)=>st[k].byDay(d),all:k=>st[k].all(),allOnce:k=>st[k].allOnce(),put:(k,v)=>st[k].put(v),putMany:(k,vs)=>st[k].putMany(vs),
+    del:(k,id)=>st[k].del(id),delMany:(k,ids)=>st[k].delMany(ids),get:(k,id)=>st[k].get(id)};
+})();
+const LocalS=(()=>{let dbp=null;
   const open=()=>dbp||(dbp=new Promise((ok,bad)=>{const r=indexedDB.open("chuhuo-fenpei",1);
     r.onupgradeneeded=()=>{const d=r.result;
       d.createObjectStore("stock",{keyPath:"id"}).createIndex("d","d");
@@ -608,7 +622,7 @@ $("sumBtn").addEventListener("click",async()=>{
 
 /* ---------- backup / restore ---------- */
 $("backupBtn").addEventListener("click",async()=>{
-  const data={app:"chuhuo-fenpei",v:1,at:new Date().toISOString(),stock:await S.all("stock"),alloc:await S.all("alloc"),cust:await S.all("cust"),plant:await S.all("plant")};
+  const data={app:"chuhuo-fenpei",v:1,at:new Date().toISOString(),stock:await S.allOnce("stock"),alloc:await S.allOnce("alloc"),cust:await S.all("cust"),plant:await S.all("plant")};
   await shareFile(new Blob([JSON.stringify(data)],{type:"application/json"}),`出货分配备份_${today().replace(/-/g,"")}.json`);
   say(`已生成备份：${data.cust.length} 个客户、${data.plant.length} 个加工厂、${data.alloc.length} 笔分配。请存到安全的地方。`);
 });
@@ -622,8 +636,30 @@ $("restoreFile").addEventListener("change",async e=>{
 });
 
 $("day").addEventListener("change",()=>{picked=null;editQ=null;loadAll()});
+let remoteT=null;
+Cloud.onRemote=()=>{clearTimeout(remoteT);remoteT=setTimeout(()=>{const a=document.activeElement;if(document.getElementById("cellQ")||(a&&["aq","an","cust","plant"].includes(a.id)))return;loadAll()},300)};
+$("logoutBtn").addEventListener("click",()=>Cloud.signOut());
+$("pdBtn").addEventListener("click",async()=>{
+  const b=$("pdBtn"),d=$("day").value;b.disabled=true;
+  try{const rs=(await Cloud.store("pandian_records").query("d","==",d)).filter(r=>r&&r.m&&r.q>0);
+    if(!rs.length){say(`车间盘点里 ${d} 还没有填了支数的记录。请先在车间盘点里录入，或者换个日期。`,true);return}
+    pending={rows:rs.map(r=>({m:String(r.m).toUpperCase(),L:+r.L,w:+r.w,q:+r.q,s:r.s||""})),hasStatus:true,days:null,name:`车间盘点 ${d}`};
+    showImp();$("impDlg").showModal()}
+  catch(e){say("读取车间盘点失败，请检查网络后再试。",true)}finally{b.disabled=false}
+});
+$("migBtn").addEventListener("click",async()=>{
+  const b=$("migBtn");b.disabled=true;b.textContent="正在上传…";
+  try{let n=0;for(const k of ["stock","alloc","cust","plant"]){const v=await LocalS.all(k);n+=v.length;await S.putMany(k,v.filter(x=>x&&x.id))}
+    try{localStorage.setItem("ch_migrated","1")}catch(e){}
+    $("migBox").hidden=true;await loadAll();say(`已把这台设备上的 ${n} 条旧资料上传到云端。`)}
+  catch(e){b.disabled=false;b.textContent="上传失败，点这里再试一次"}
+});
 (async()=>{try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  try{await Cloud.ready}catch(e){}
+  $("who").textContent="当前账号："+(Cloud.email()||"");
   await loadAll();
+  try{let n=0;for(const k of ["stock","alloc","cust","plant"])n+=(await LocalS.all(k)).length;let done=false;try{done=localStorage.getItem("ch_migrated")==="1"}catch(e){}
+    if(n&&!done){$("migBox").hidden=false;$("migBtn").textContent=`把这台设备上的旧资料（${n} 条）上传到云端`}}catch(e){}
   if(lastCust&&custs.some(c=>c.id===lastCust))custBox.set(lastCust);
   if(lastPlant&&plants.some(p=>p.id===lastPlant))plantBox.set(lastPlant);
 })();
