@@ -221,6 +221,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
       <label for="day" class="sub">盘点日期</label>
       <input type="date" id="day">
     </div>
+    <button class="btn primary" id="scanTop" type="button">📷 拍照识别</button>
     <button class="btn primary" id="quickTop" type="button">快速填数</button>
     <button class="btn" id="exportBtn" type="button">导出 Excel</button>
     <div class="sync" id="cloudStatus"><i></i><span>连接中…</span></div>
@@ -600,6 +601,7 @@ async function loadDay(){
   catch(e){setSync("bad","读取失败");$("list").innerHTML=`<div class="empty">读取记录失败，请关掉 App 重新打开。</div>`}
 }
 $("day").addEventListener("change",()=>{resetForm();closeQuick();loadDay()});
+window.WC={S,cat:()=>catalog,setCat:c=>{catalog=c},day:()=>$("day").value,recs:()=>records,say,reload:()=>(typeof _loadDay==="function"?_loadDay():loadDay())};
 let remoteT=null;
 Cloud.onRemote=()=>{clearTimeout(remoteT);remoteT=setTimeout(()=>{if(document.getElementById("cellQ")||(document.activeElement&&document.activeElement.closest&&document.activeElement.closest("#form")))return;_loadDay?_loadDay():loadDay()},300)};
 (async()=>{
@@ -885,5 +887,6 @@ async function buildWorkbook(XL,recs,day){
 }
 })();
 </script>
+<script src="scan.js"></script>
 </body>
 </html>
