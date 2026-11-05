@@ -63,6 +63,26 @@ header.top .sub{color:var(--muted);font-size:13px}
 .tcard.pk{background:var(--st-pk);color:var(--st-pk-ink);border-color:transparent}
 .tcard.nw{background:var(--st-new);color:var(--st-new-ink);border-color:transparent}
 .tcard.in .sm,.tcard.pk .sm,.tcard.nw .sm{color:inherit;opacity:.8}
+.tcard{cursor:pointer;text-align:left;font:inherit;width:100%;-webkit-tap-highlight-color:transparent}
+.tcard .arr{display:inline-block;transition:transform .15s;margin-left:4px;font-size:11px}
+.tcard[aria-expanded="true"] .arr{transform:rotate(180deg)}
+.tcard[aria-expanded="true"]{outline:3px solid var(--accent);outline-offset:-1px}
+#tdrop{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+#tdrop .td-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;font-weight:700;border-bottom:1px solid var(--line)}
+#tdrop .td-h button{border:1px solid var(--line);background:var(--panel);border-radius:8px;min-height:36px;padding:2px 12px}
+#tdrop .td-w{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#tdrop table{border-collapse:collapse;width:100%;font-family:var(--f-data);font-size:14px}
+#tdrop th{position:sticky;top:0;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:6px 8px;white-space:nowrap;font-family:var(--f-body)}
+#tdrop td{padding:7px 8px;border-bottom:1px solid var(--soft);white-space:nowrap;text-align:right}
+#tdrop td.m{text-align:left;font-weight:700}#tdrop td.pg{color:var(--muted);text-align:left}
+#tdrop tr.r{cursor:pointer}#tdrop tr.r:active td{background:var(--soft)}
+#tdrop tr.flag td.m{color:var(--danger)}
+#tdrop tr.ed td{background:var(--bg);text-align:left;white-space:normal}
+#tdrop .edrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 0}
+#tdrop .edrow input{width:120px;min-height:44px;font-size:20px;font-family:var(--f-data);text-align:right;border:2px solid var(--accent);border-radius:8px;padding:2px 8px;background:var(--panel);color:var(--ink)}
+#tdrop .edrow .pill{border:2px solid transparent;min-height:40px;padding:2px 12px;font-size:14px}
+#tdrop .edrow .pill[aria-pressed="true"]{border-color:var(--ink)}
+#tdrop .edrow .note{flex-basis:100%;font-size:12px;color:var(--muted)}
 
 .cols{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
@@ -453,9 +473,48 @@ function visible(){const k=norm(search);return records.filter(r=>(!filter||r.s==
 function renderTotals(){
   const agg={};ST.forEach(s=>agg[s]={n:0,q:0,kg:0});let all={n:0,q:0,kg:0};
   records.forEach(r=>{if(!(r.q>0))return;const kg=r.w/6*r.L*r.q,a=agg[r.s]||(agg[r.s]={n:0,q:0,kg:0});a.n++;a.q+=r.q;a.kg+=kg;if(r.s!==SHIP){all.n++;all.q+=r.q;all.kg+=kg}});
-  const card=(cls,lab,a)=>`<div class="tcard ${cls}"><div class="lab"><span>${lab}</span><span class="num">${a.n} 行</span></div><div class="big">${fmt0(a.q)}<span style="font-size:13px"> 支</span></div><div class="sm">${fmt1(a.kg)} kg</div></div>`;
+  const key={"已入库":"已入库","包装中":"包装中","刚生产":"刚生产","已出货":SHIP};
+  const card=(cls,lab,a)=>{const k=key[lab]||"*";return `<button type="button" class="tcard ${cls}" data-td="${k}" aria-expanded="${tdOpen===k}"><div class="lab"><span>${lab}<span class="arr">▼</span></span><span class="num">${a.n} 行</span></div><div class="big">${fmt0(a.q)}<span style="font-size:13px"> 支</span></div><div class="sm">${fmt1(a.kg)} kg</div></button>`};
   $("totals").innerHTML=card("in","已入库",agg["已入库"])+card("pk","包装中",agg["包装中"])+card("nw","刚生产",agg["刚生产"])+(agg[SHIP]&&agg[SHIP].n?card("sh","已出货",agg[SHIP]):"")+card("",agg[SHIP]&&agg[SHIP].n?"在库合计":"合计",all);
+  renderDrop();
 }
+/* ---------- 点合计卡片展开清单 ---------- */
+let tdOpen=null,tdEdit=null;
+function renderDrop(){
+  let box=$("tdrop");
+  if(!tdOpen){if(box)box.remove();return}
+  if(!box){box=document.createElement("section");box.id="tdrop";box.setAttribute("aria-label","展开的清单");$("totals").insertAdjacentElement("afterend",box)}
+  const rs=records.filter(r=>tdOpen==="*"?r.s!==SHIP:r.s===tdOpen);
+  const title=tdOpen==="*"?"全部（在库）":tdOpen;
+  const tq=rs.reduce((s,r)=>s+(r.q>0?r.q:0),0);
+  const body=rs.map((r,i)=>{const kg=r.q>0?r.w/6*r.L*r.q:0,flag=(r.n||"").startsWith("【需核对】");
+    let tr=`<tr class="r${flag?" flag":""}" data-tr="${r.id}"><td class="pg">${i+1}</td><td class="m">${esc(r.m)}</td><td>${r.L}</td><td>${r.w}</td><td>${r.q==null?"待填":fmt0(r.q)}</td><td>${r.q>0?fmt1(kg):""}</td>${tdOpen==="*"?`<td style="text-align:left"><span class="pill ${CLS[r.s]||""}">${esc(r.s)}</span></td>`:""}</tr>`;
+    if(tdEdit===r.id&&r.s!==SHIP)tr+=`<tr class="ed"><td colspan="${tdOpen==="*"?7:6}"><div class="edrow">
+      <span>支数</span><input id="tdQ" inputmode="numeric" pattern="[0-9]*" value="${r.q!=null?r.q:""}" autocomplete="off">
+      ${ST.map(s=>`<button type="button" class="pill ${CLS[s]}" data-tds="${s}" aria-pressed="${s===r.s}">${s}</button>`).join("")}
+      <button type="button" class="btn primary" data-tdok="${r.id}" style="min-height:40px">保存</button><button type="button" class="btn" data-tdno="1" style="min-height:40px">取消</button>
+      ${r.n?`<span class="note">${esc(r.n)}</span>`:""}</div></td></tr>`;
+    return tr}).join("");
+  box.innerHTML=`<div class="td-h"><span>${esc(title)} · ${rs.length} 行 · ${fmt0(tq)} 支</span><button type="button" data-tdclose="1">收起 ▲</button></div>
+    <div class="td-w">${rs.length?`<table><thead><tr><th>#</th><th style="text-align:left">型号</th><th>长度</th><th>支重</th><th>支数</th><th>重量kg</th>${tdOpen==="*"?"<th>状态</th>":""}</tr></thead><tbody>${body}</tbody></table>`:`<div class="empty" style="padding:14px">这一类今天没有记录。</div>`}</div>`;
+  const q=$("tdQ");if(q){q.focus({preventScroll:true});q.select()}
+}
+$("totals").addEventListener("click",e=>{const c=e.target.closest("[data-td]");if(!c)return;const k=c.dataset.td;tdOpen=tdOpen===k?null:k;tdEdit=null;renderTotals();
+  if(tdOpen){const b=$("tdrop");if(b)b.scrollIntoView({block:"nearest",behavior:"smooth"})}});
+document.addEventListener("click",async e=>{
+  const box=$("tdrop");if(!box||!box.contains(e.target))return;
+  if(e.target.closest("[data-tdclose]")){tdOpen=null;tdEdit=null;renderTotals();return}
+  if(e.target.closest("[data-tdno]")){tdEdit=null;renderDrop();return}
+  const sb=e.target.closest("[data-tds]");if(sb){box.querySelectorAll("[data-tds]").forEach(b=>b.setAttribute("aria-pressed",String(b===sb)));return}
+  const ok=e.target.closest("[data-tdok]");
+  if(ok){const id=ok.dataset.tdok,r=records.find(x=>x.id===id);if(!r)return;
+    const v=$("tdQ").value.replace(/[^\d]/g,""),q=v===""?null:parseInt(v,10);
+    const s=(box.querySelector('[data-tds][aria-pressed="true"]')||{}).dataset;const ns=s&&s.tds||r.s;
+    const patch={};if(q!==r.q)patch.q=q;if(ns!==r.s)patch.s=ns;
+    tdEdit=null;if(Object.keys(patch).length){try{await S.update(id,patch);await loadDay();say("已修改。")}catch(err){say("保存失败，请再试一次。",true)}}else renderDrop();return}
+  const tr=e.target.closest("tr[data-tr]");if(tr){const r=records.find(x=>x.id===tr.dataset.tr);if(r&&r.s===SHIP){say("已出货的行请在出货 App 里处理。");return}tdEdit=tdEdit===tr.dataset.tr?null:tr.dataset.tr;renderDrop()}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target&&e.target.id==="tdQ"){e.preventDefault();const b=document.querySelector("[data-tdok]");if(b)b.click()}});
 let selMode=false,sel=new Set(),selArm=false;
 let view="table",editQ=null,editS=null;
 try{const v=localStorage.getItem("wc_view");if(v==="card"||v==="table")view=v}catch(e){}
