@@ -37,7 +37,7 @@
     render();
   }
   let tab = LS.get("qd_tab", "list"), sub = LS.get("qd_sub", "photo"), cmpF = "all", ckF = "all";
-  let day = null, rows = [], ship = 0, yday = null, yrows = [], checks = null, openS = null, editId = null, qtext = "", hist = null, histDays = 14, busy = false, armImport = null;
+  let day = null, rows = [], ship = 0, yday = null, yrows = [], checks = null, openS = null, editId = null, qtext = "", hist = null, histDays = 14, busy = false, armImport = null, autoJumped = false, jumpNote = "";
 
   /* ---------- 外框 ---------- */
   const css = `
@@ -148,7 +148,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     tab = t; LS.set("qd_tab", t); document.body.dataset.tab = t; openS = null; editId = null;
     const bt = ["dash", "data", "ship"].includes(t) ? "more" : t;
     for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === bt ? "page" : "false");
-    if (t === "dash") { render(); loadSums().then(render) } else if (t !== "entry") { render(); if (day) load() } else if (window.WC && WC.reload) WC.reload();
+    if (t === "dash" || t === "data") { dataFull = true; render(); loadSums().then(() => { dataFull = true; render() }) } else if (t !== "entry") { render(); if (day) load() } else if (window.WC && WC.reload) WC.reload();
     window.scrollTo(0, 0);
   }
   bar.addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab) });
@@ -160,12 +160,19 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       const all = await R.byDay(day);
       ship = all.filter(r => r.s === "已出货").length;
       rows = all.filter(r => r.q > 0 && ST.includes(r.s)).sort((a, b) => (a.t || 0) - (b.t || 0));
+      // 今天还没有数据：自动切到最近有数据的那天（每次打开只自动切一次，之后手动选哪天就是哪天）
+      if (!rows.length && !ship && !autoJumped && tab !== "entry") {
+        autoJumped = true;
+        const ld = await R.lastDayBefore(day);
+        if (ld) { $("day").value = ld; jumpNote = `${day.slice(5).replace("-", "/")} 还没有数据，已显示最近有数据的 ${ld.slice(5).replace("-", "/")}。`; return load() }
+      }
       const yd = await R.lastDayBefore(day);
       if (yd !== yday) { yday = yd; yrows = yd ? (await R.query("d", "==", yd)).filter(r => r.q > 0 && ST.includes(r.s)) : [] }
       checks = (await KV.get("checks_" + day)) || null;
       syncSum(day, all).catch(e => console.error(e));
     } catch (e) { console.error(e); msg("读取云端数据失败，请检查网络后再试。", "err") }
     if (tab !== "entry") render(); paintDot();
+    if (jumpNote) { msg(jumpNote, "ok"); jumpNote = "" }
   }
   let rt = null;
   Cloud.onChange(() => { clearTimeout(rt); rt = setTimeout(() => { if (editId || document.activeElement && document.activeElement.closest && document.activeElement.closest(".qd-ed")) return; load() }, 300) });
@@ -400,7 +407,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     const it = (t, p, btn, soon) => `<div class="it"><h3>${t}</h3>${soon ? `<span class="soon">${soon}</span>` : ""}<p>${p}</p>${btn || ""}</div>`;
     return `<div class="qd-msg" id="qdMsg"></div><div class="qd-more">
       ${it("库存看板", "每天库存走势、各状态占比、出货（估）/新增（估）、支重区间、出货最快和呆货排行。", `<button type="button" class="btn primary" id="qdDash">打开看板</button>`)}
-      ${it("产品大数据 / 型号库", "每个型号的库存、出货（估）、可卖天数、趋势；型号标准库审核。", "", "第三步做")}
+      ${it("产品大数据 / 型号库", "每个型号的库存、出货（估）、可卖次数、趋势、详情走势；型号标准库审核；一键导出大数据 Excel。", `<button type="button" class="btn primary" id="qdData">打开大数据</button>`)}
       ${it("出货", "分配客户和加工厂、提货单、提货后自动扣库存。以后接进这里。", `<a class="btn" href="${ch}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">打开现有的出货 App</a>`, "预留入口")}
       ${it("拍照识别", "在 App 里直接拍手写单识别。需要 Claude API 密钥（按用量付费），以后再开。", `<button type="button" class="btn" id="qdScan">打开拍照识别</button>`)}
       ${it("型号库", "录入时下拉用的型号、长度、支重。", `<button type="button" class="btn" id="qdCat">打开型号库</button>`)}
@@ -479,15 +486,110 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
        </div><div class="sub" style="color:var(--muted);font-size:12px">点型号可以跳到“型号查询”。数据来自每天导入的清单；在 App 里改了状态、支数会自动更新。</div>`;
   }
 
+  /* ---------- 页面：产品大数据 / 型号库 ---------- */
+  let dsub = LS.get("qd_dsub", "db"), dq = "", dsort = "curk", dtr = "all", dmodel = null, lq = "", lf = "todo", review = null, mergeKey = null, anaCache = null, dataFull = true, bigBusy = false;
+  const TRC = { "上涨(可能积压)": "var(--st-new)", "下降(快没了)": "var(--lv-m)", "呆货(没动过)": "var(--lv-l)", "已清空": "#f8cbad" };
+  const gnum = x => String(+x);
+  function ana() { if (!sums) return null; const key = [...sums.values()].map(x => x.d + ":" + x.n + ":" + x.sp.length).join(","); if (!anaCache || anaCache.key !== key) anaCache = { key, A: QDA.analyze([...sums.values()]) }; return anaCache.A }
+  async function loadReview() { if (review) return review; try { review = (await KV.get("stdlib_review")) || {} } catch (e) { review = {} } return review }
+  function libList(A) {
+    const lib = new Map();
+    [...sums.values()].sort((a, b) => a.d < b.d ? -1 : 1).forEach(s => s.sp.forEach(([k, m, L, w, a, b, c]) => {
+      const key = `${k}|${gnum(L)}|${gnum(w)}`, x = lib.get(key) || { key, k, L, w, days: new Set(), spell: {}, last: "", lastq: 0, first: s.d };
+      x.days.add(s.d); x.spell[m] = (x.spell[m] || 0) + 1; if (s.d >= x.last) { x.lastq = s.d === x.last ? x.lastq + a + b + c : a + b + c; x.last = s.d } lib.set(key, x);
+    }));
+    return [...lib.values()].map(x => Object.assign(x, { n: x.days.size, name: Object.entries(x.spell).sort((a, b) => b[1] - a[1])[0][0], spells: Object.keys(x.spell).sort() }));
+  }
+  function dataResults() {
+    const A = ana(); if (!A) return `<div class="qd-empty"><b>正在读取…</b></div>`;
+    if (dsub === "db") {
+      if (dmodel) return modelDetail(A, dmodel);
+      const k = norm(dq); let L = A.MI.filter(m => !k || norm(m.name).includes(k) || m.var.some(v => norm(v).includes(k)));
+      if (dtr !== "all") L = L.filter(m => m.tr === dtr);
+      const S = { curk: (a, b) => b.curk - a.curk, ok: (a, b) => b.ok - a.ok, sell: (a, b) => (a.sell ?? 1e9) - (b.sell ?? 1e9), flag: (a, b) => b.flag - a.flag, name: (a, b) => a.name < b.name ? -1 : 1 };
+      L.sort(S[dsort]);
+      const cnt = t => A.MI.filter(m => m.tr === t).length;
+      return `<div class="qd-chips">${[["curk", "库存最多"], ["ok", "出货最快"], ["sell", "快卖完"], ["flag", "常抄错"], ["name", "按型号"]].map(([v, t]) => `<button type="button" data-ds="${v}" aria-pressed="${dsort === v}">${t}</button>`).join("")}</div>
+        <div class="qd-chips">${[["all", "全部 " + A.MI.length], ...["上涨(可能积压)", "下降(快没了)", "呆货(没动过)", "已清空", "平稳", "偶尔出现"].map(t => [t, t.replace(/\(.*\)/, "") + " " + cnt(t)])].map(([v, t]) => `<button type="button" data-dt="${v}" aria-pressed="${dtr === v}">${t}</button>`).join("")}</div>
+        <div class="sub" style="color:var(--muted);font-size:13px">${L.length} 个型号 · ${A.days.length} 次盘点（${md(A.days[0])}–${md(A.days[A.days.length - 1])}）· 点一行看详情</div>
+        <div class="qd-tw"><table class="qd-t"><thead><tr><th class="c1">#</th><th class="c2">型号</th><th>现库存</th><th>kg</th><th>出货(估)</th><th>次数</th><th>可卖次数</th><th>趋势</th><th>规格</th><th>核对</th><th>写法</th></tr></thead><tbody>${L.slice(0, 400).map((m, i) => `<tr data-dm="${esc(m.k)}" style="cursor:pointer"><td class="c1">${i + 1}</td><td class="c2">${esc(m.name)}</td><td class="Q">${n0(m.cur)}</td><td>${n1(m.curk)}</td><td>${n0(m.oq)}</td><td>${m.nout}</td><td>${m.sell === null ? "—" : n1(m.sell)}</td><td class="ct" style="${TRC[m.tr] ? "background:" + TRC[m.tr] : ""}">${m.tr}</td><td>${m.nspec}</td><td>${m.flag || ""}</td><td class="nt">${m.var.length > 1 ? esc(m.var.join("、")) : ""}</td></tr>`).join("")}</tbody></table></div>${L.length > 400 ? `<div class="sub">只显示前 400 个，请搜索。</div>` : ""}`;
+    }
+    // 型号标准库审核
+    if (!review) { loadReview().then(() => { dataFull = false; render() }); return `<div class="qd-empty"><b>正在读取…</b></div>` }
+    const lib = libList(A), k = norm(lq);
+    const st = x => (review[x.key] || {}).ok || "";
+    let L = lib.filter(x => !k || norm(x.name).includes(k) || x.spells.some(v => norm(v).includes(k)));
+    const F = { todo: x => !st(x), common: x => x.n >= 3, rare: x => x.n < 3, done: x => !!st(x), del: x => st(x) === "删除" };
+    const cnt = f => lib.filter(F[f]).length;
+    L = L.filter(F[lf]).sort((a, b) => a.k < b.k ? -1 : a.k > b.k ? 1 : a.L - b.L || a.w - b.w);
+    const done = lib.filter(x => st(x)).length;
+    return `<div class="qd-prog"><span>已审 ${done} / ${lib.length}</span><span class="bar"><i style="width:${Math.round(done / Math.max(1, lib.length) * 100)}%"></i></span><button type="button" class="btn" id="qdLibExp">导出审核结果</button></div>
+      <div class="qd-chips">${[["todo", "未审"], ["rare", "少见(<3天)"], ["common", "常用(≥3天)"], ["done", "已审"], ["del", "已删除"]].map(([v, t]) => `<button type="button" data-lf="${v}" aria-pressed="${lf === v}">${t} ${cnt(v)}</button>`).join("")}</div>
+      <div class="sub" style="color:var(--muted);font-size:13px">每个“型号+长度+支重”一行。保留 = 以后查错按它算正常；删除 = 是抄错的，以后再出现会提醒；合并 = 这是另一个型号的错误写法。审完点“导出审核结果”发给 Claude。</div>
+      <div class="qd-ck" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">${L.slice(0, 150).map(x => { const r = review[x.key] || {};
+        return `<div class="qd-c ${x.n >= 3 ? "l" : "m"}${r.ok ? " done" : ""}"><div class="top"><span>${x.n} 天 · 最近 ${md(x.last)} · ${n0(x.lastq)} 支</span><span>${r.ok ? "✓ " + r.ok + (r.to ? " → " + esc(r.to) : "") : ""}</span></div>
+        <div class="spec"><span>${esc(x.name)}</span><span class="L">${x.L}米</span><span class="W">${x.w}</span></div>${x.spells.length > 1 ? `<div class="why">写法：${esc(x.spells.join("、"))}</div>` : ""}
+        ${mergeKey === x.key ? `<div class="qd-ed" style="grid-template-columns:1fr auto auto"><input id="qdMergeTo" placeholder="正确的型号" autocapitalize="characters" spellcheck="false"><button type="button" class="btn primary" data-mok="${esc(x.key)}">合并</button><button type="button" class="btn" data-mno="1">取消</button></div>` :
+          `<div class="acts">${["保留", "删除"].map(v => `<button type="button" data-rv="${v}" data-key="${esc(x.key)}" aria-pressed="${r.ok === v}">${v}</button>`).join("")}<button type="button" data-mg="${esc(x.key)}" aria-pressed="${r.ok === "合并"}">合并到…</button></div>`}</div>` }).join("")}</div>${L.length > 150 ? `<div class="sub">还有 ${L.length - 150} 条，审完这些会自动显示后面的，或者搜索型号。</div>` : ""}`;
+  }
+  function modelDetail(A, k) {
+    const m = A.MI.find(x => x.k === k); if (!m) return `<div class="qd-empty"><b>没有这个型号</b></div>`;
+    const days = A.days, W = (window.innerWidth || 800) < 700 ? 420 : 720, H = 200, pl = 50, pb = 22, pt = 10, bw = (W - pl - 6) / days.length;
+    const per = days.map(d => { const o = { "已入库": 0, "包装中": 0, "刚生产": 0 }; const s = sums.get(d); if (s) s.sp.forEach(([kk, mm, L, w, a, b, c]) => { if (kk === k) { o["已入库"] += a; o["包装中"] += b; o["刚生产"] += c } }); return o });
+    const mxv = niceMax(Math.max(1, ...m.ser)); let g = "";
+    days.forEach((d, i) => { let y = H - pb; ST.forEach(s => { const h = per[i][s] / mxv * (H - pb - pt); if (h > 0) { y -= h; g += `<rect x="${pl + i * bw + bw * .15}" y="${y}" width="${bw * .7}" height="${h}" fill="${SC[s]}"><title>${md(d)} ${s} ${n0(per[i][s])} 支</title></rect>` } }) });
+    const specs = Object.values(A.spec).filter(s => s.k === k).sort((a, b) => a.L - b.L || a.w - b.w);
+    return `<div class="qd-tool"><button type="button" class="btn" id="qdDmBack">‹ 型号列表</button><b style="font-size:20px;font-family:var(--f-data)">${esc(m.name)}</b><span class="ct" style="padding:2px 10px;border-radius:999px;${TRC[m.tr] ? "background:" + TRC[m.tr] : "background:var(--soft)"}">${m.tr}</span><button type="button" class="btn" data-gm="${esc(m.name)}">看今天的行</button></div>
+      <div class="qd-cards"><div class="qd-card"><div class="l"><span>现库存 ${md(m.last || days[days.length - 1])}</span></div><div class="b">${n0(m.cur)} 支</div><div class="s">${n1(m.curk)} kg · ${m.st}</div></div>
+      <div class="qd-card nw"><div class="l"><span>出货（估）合计</span></div><div class="b">${n0(m.oq)} 支</div><div class="s">${n1(m.ok)} kg · ${m.nout} 次 · 每次 ${n0(m.dq)}</div></div>
+      <div class="qd-card pk"><div class="l"><span>可卖次数（估）</span></div><div class="b">${m.sell === null ? "—" : n1(m.sell)}</div><div class="s">平均库存 ${n0(m.avg)} · 最高 ${n0(m.mx)} · 最低 ${n0(m.mn)}</div></div>
+      <div class="qd-card in"><div class="l"><span>刚生产合计</span></div><div class="b">${n0(m.prodq)} 支</div><div class="s">${n1(m.prodk)} kg · 需核对 ${m.flag} 次</div></div></div>
+      <div class="qd-trend"><b>每次盘点的库存（支）</b>${ST.map(s => `<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${SC[s]};margin:0 4px 0 8px"></i><span style="font-size:13px;color:var(--muted)">${s}</span>`).join("")}<svg viewBox="0 0 ${W} ${H}">${axisY(W, H, pl, pb, pt, mxv, "")}${g}${xLabels(days, pl, bw, H, Math.ceil(days.length / (W < 700 ? 6 : 10)))}</svg></div>
+      <div class="qd-trend"><b>规格（长度 + 支重）</b><div class="qd-tw" style="max-height:none;margin-top:8px"><table class="qd-t"><thead><tr><th class="c1">#</th><th class="c2">长度 / 支重</th><th>出现</th><th>最新</th>${days.slice(-8).map(d => `<th>${md(d)}</th>`).join("")}</tr></thead><tbody>${specs.map((s, i) => `<tr><td class="c1">${i + 1}</td><td class="c2"><span class="L" style="color:var(--len)">${s.L}米</span> <span style="color:var(--wt)">${s.w}</span></td><td>${Object.keys(s.ser).length} 天</td><td class="Q">${n0(s.ser[days[days.length - 1]] || 0)}</td>${days.slice(-8).map(d => `<td>${s.ser[d] ? n0(s.ser[d]) : ""}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      <div class="sub" style="color:var(--muted);font-size:13px;margin-top:6px">单上出现过的写法：${esc(m.var.join("、"))} · 首次 ${md(m.first)} · 最近 ${md(m.last)} · 出现 ${m.ndays} 天</div></div>`;
+  }
+  function viewData() {
+    const top = `<div class="qd-tool"><button type="button" class="btn" id="qdBack">‹ 更多</button><b style="font-size:18px">产品大数据</b><span style="flex:1"></span><button type="button" class="btn primary" id="qdBig" ${bigBusy ? "disabled" : ""}>${bigBusy ? "正在生成…" : "导出大数据 Excel"}</button></div>`;
+    if (!sums) return top + `<div class="qd-empty"><b>正在读取…</b></div>`;
+    if (!sums.size) return top + `<div class="qd-empty"><b>还没有数据</b><span>先在“今日清单”导入当天文件或历史数据。</span></div>`;
+    const seg = `<div class="qd-seg">${[["db", "型号数据库"], ["lib", "型号标准库审核"]].map(([v, t]) => `<button type="button" data-dsub="${v}" aria-pressed="${dsub === v}">${t}</button>`).join("")}</div>`;
+    const q = dmodel && dsub === "db" ? "" : `<div class="qd-q"><input id="qdDQ" type="search" placeholder="搜型号（可以只输一部分）" value="${esc(dsub === "db" ? dq : lq)}" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search"></div>`;
+    return top + `<div class="qd-msg" id="qdMsg"></div>` + seg + q + `<div id="qdDR">${dataResults()}</div>`;
+  }
+  async function exportBig() {
+    bigBusy = true; dataFull = true; render();
+    try {
+      const XL = await loadXL(), all = await R.allOnce();
+      const buf = await QDBIG.build(XL, all, { charts: true });
+      const days = [...new Set(all.map(r => r.d))].sort(), last = days[days.length - 1] || day;
+      const r = await share(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `产品大数据库_${last.slice(0, 7)}.xlsx`);
+      bigBusy = false; dataFull = true; render(); msg(r === "cancel" ? "已取消导出。" : `已生成产品大数据库（${days.length} 天、${all.length} 行）。`, r === "cancel" ? "" : "ok");
+    } catch (e) { console.error(e); bigBusy = false; dataFull = true; render(); msg("生成失败，请检查网络后再试。", "err") }
+  }
+  async function setReview(key, ok, to) {
+    await loadReview(); const cur = review[key] || {};
+    if (cur.ok === ok && !to) delete review[key]; else review[key] = to ? { ok, to } : { ok };
+    dataFull = false; render(); await KV.set("stdlib_review", review);
+  }
+  async function exportReview() {
+    await loadReview(); const A = ana(), lib = libList(A), items = {};
+    lib.forEach(x => { const r = review[x.key]; if (r) items[x.key] = Object.assign({ name: x.name, L: x.L, w: x.w, days: x.n }, r) });
+    const blob = new Blob([JSON.stringify({ app: "pandian-stdlib", v: 1, at: new Date().toISOString(), n: Object.keys(items).length, items }, null, 1)], { type: "application/json" });
+    const t = new Date(), nm = `型号标准库_审核_${String(t.getMonth() + 1).padStart(2, "0")}${String(t.getDate()).padStart(2, "0")}.json`;
+    const r = await share(blob, nm); msg(r === "cancel" ? "已取消。" : `已导出 ${Object.keys(items).length} 条审核结果（${nm}），发给 Claude 就行。`, r === "cancel" ? "" : "ok");
+  }
+
   /* ---------- 渲染 + 事件 ---------- */
   function render() {
     if (tab === "entry") return;
     if (tab === "query" && box.dataset.v === "query" && $("qdQ") && $("qdQR")) { const tw = $("qdQR").querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0; $("qdQR").innerHTML = queryResults(); const t2 = $("qdQR").querySelector(".qd-tw"); if (t2) t2.scrollLeft = sx; return }
+    if (tab === "data" && !dataFull && box.dataset.v === "data" && $("qdDR")) { $("qdDR").innerHTML = dataResults(); return }
+    dataFull = false;
     box.dataset.v = tab;
     const keepQ = document.activeElement && document.activeElement.id === "qdQ", sel = keepQ ? document.activeElement.selectionStart : 0;
     const old = $("qdMsg"), om = old ? [old.textContent, old.className] : null;
     const tw = box.querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0, sy = tw ? tw.scrollTop : 0;
-    box.innerHTML = tab === "list" ? viewList() : tab === "check" ? viewCheck() : tab === "query" ? viewQuery() : tab === "dash" ? viewDash() : viewMore();
+    box.innerHTML = tab === "list" ? viewList() : tab === "check" ? viewCheck() : tab === "query" ? viewQuery() : tab === "dash" ? viewDash() : tab === "data" ? viewData() : viewMore();
     if (om && $("qdMsg")) { $("qdMsg").textContent = om[0]; $("qdMsg").className = om[1] }
     const tw2 = box.querySelector(".qd-tw"); if (tw2) { tw2.scrollLeft = sx; tw2.scrollTop = sy }
     if (keepQ && $("qdQ")) { $("qdQ").focus(); try { $("qdQ").setSelectionRange(sel, sel) } catch (e) { } }
@@ -495,6 +597,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
   }
   box.addEventListener("click", e => {
     const t = e.target;
+    const tr = t.closest("tr[data-dm]"); if (tr && !t.closest("button")) { dmodel = tr.dataset.dm; dataFull = true; render(); window.scrollTo(0, 0); return }
     const b = t.closest("button, a"); if (!b) return;
     if (b.id === "qdImp") { file.click(); return }
     if (b.id === "qdImpOk") { doImport(); return }
@@ -504,6 +607,18 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     if (b.id === "qdBack") { setTab("more"); return }
     if (b.dataset.rg) { dashR = +b.dataset.rg; LS.set("qd_range", String(dashR)); render(); return }
     if (b.id === "qdRebuild") { rebuildSums(); return }
+    if (b.id === "qdData") { setTab("data"); return }
+    if (b.dataset.dsub) { dsub = b.dataset.dsub; LS.set("qd_dsub", dsub); dmodel = null; dataFull = true; render(); return }
+    if (b.dataset.ds) { dsort = b.dataset.ds; render(); return }
+    if (b.dataset.dt) { dtr = b.dataset.dt; render(); return }
+    if (b.id === "qdDmBack") { dmodel = null; dataFull = true; render(); return }
+    if (b.dataset.lf) { lf = b.dataset.lf; render(); return }
+    if (b.dataset.rv) { setReview(b.dataset.key, b.dataset.rv); return }
+    if (b.dataset.mg) { mergeKey = b.dataset.mg; render(); setTimeout(() => { const i = $("qdMergeTo"); if (i) i.focus() }, 50); return }
+    if (b.dataset.mno) { mergeKey = null; render(); return }
+    if (b.dataset.mok) { const v = ($("qdMergeTo").value || "").trim().toUpperCase(); if (!v) { msg("请填正确的型号。", "err"); return } mergeKey = null; setReview(b.dataset.mok, "合并", v); return }
+    if (b.id === "qdLibExp") { exportReview(); return }
+    if (b.id === "qdBig") { exportBig(); return }
     if (b.dataset.gm) { qtext = b.dataset.gm; hist = null; setTab("query"); return }
     if (b.id === "qdImpNo") { armImport = null; render(); msg("已取消导入，原来的数据没有动。"); return }
     if (b.id === "qdExp") { exportXlsx(); return }
@@ -530,7 +645,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     if (b.id === "qdOut") { Cloud.signOut(); return }
   });
   let rqT = null;
-  box.addEventListener("input", e => { if (e.target.id === "qdQ") { qtext = e.target.value; render(); clearTimeout(rqT); rqT = setTimeout(() => { if (norm(qtext).length >= 3) { saveRecent(qtext) } }, 1500) } });
+  box.addEventListener("input", e => { if (e.target.id === "qdDQ") { if (dsub === "db") dq = e.target.value; else lq = e.target.value; render(); return } if (e.target.id === "qdQ") { qtext = e.target.value; render(); clearTimeout(rqT); rqT = setTimeout(() => { if (norm(qtext).length >= 3) { saveRecent(qtext) } }, 1500) } });
   box.addEventListener("keydown", e => { if (e.target.id === "qdQ" && e.key === "Enter") { saveRecent(qtext); e.target.blur(); render() } });
   box.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".qd-ed")) { const s = box.querySelector("[data-save]"); if (s) s.click() } if (e.key === "Escape" && editId) { editId = null; render() } });
 
