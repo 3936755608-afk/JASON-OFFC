@@ -97,7 +97,8 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 .qd-ed label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
 .qd-ed input{min-height:44px;border:2px solid var(--accent);border-radius:8px;padding:0 8px;font-family:var(--f-data);font-size:17px;background:var(--panel);color:var(--ink);width:100%}
 .qd-q{display:flex;gap:8px}
-.qd-q input{flex:1;min-height:52px;font-size:22px;font-weight:700;border:2px solid #bf8f00;background:#fff2cc;color:#c00000;border-radius:10px;padding:0 14px;font-family:var(--f-data);text-transform:uppercase}
+.qd-q #qdQClr{min-width:52px;font-size:18px}
+.qd-q input{flex:1;min-width:0;min-height:52px;font-size:22px;font-weight:700;border:2px solid #bf8f00;background:#fff2cc;color:#c00000;border-radius:10px;padding:0 14px;font-family:var(--f-data);text-transform:uppercase}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .qd-q input{background:#3d3313;color:#ffb3b8}}
 .qd-more{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
 .qd-more .it{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
@@ -314,12 +315,20 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
   }
 
   /* ---------- 页面：型号查询 ---------- */
+  // 型号查询：输入框只画一次，打字时只刷新下面的结果（不然 iPhone 键盘会被重置回默认输入法）
+  const recentQ = () => { try { return JSON.parse(LS.get("qd_recent", "[]")) } catch (e) { return [] } };
+  function saveRecent(t) { t = String(t || "").trim().toUpperCase(); if (!t) return; const l = [t].concat(recentQ().filter(x => x !== t)).slice(0, 10); LS.set("qd_recent", JSON.stringify(l)) }
   function viewQuery() {
+    return `<div class="qd-q"><input id="qdQ" type="search" placeholder="输入型号，如 8004、QG7801" value="${esc(qtext)}" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search"><button type="button" class="btn" id="qdQClr" aria-label="清空">✕</button></div>
+      <div id="qdQR">${queryResults()}</div>`;
+  }
+  function queryResults() {
     const k = norm(qtext), hit = k ? rows.map((r, i) => [r, i]).filter(([r]) => norm(r.m).includes(k)) : [];
-    let out = `<div class="qd-q"><input id="qdQ" placeholder="输入型号，如 8004、QG7801" value="${esc(qtext)}" autocapitalize="characters" spellcheck="false" autocomplete="off" enterkeyhint="search"></div>
-      <div class="sub" style="color:var(--muted);font-size:13px">可以只输一部分，不分大小写，有没有“-”都行。${k ? `找到 <b>${hit.length}</b> 行（${md(day)}）` : ""}</div>`;
+    const rec = recentQ();
+    let out = `<div class="sub" style="color:var(--muted);font-size:13px">可以只输一部分，不分大小写，有没有“-”都行。${k ? `找到 <b>${hit.length}</b> 行（${md(day)}）` : ""}</div>`;
+    if (rec.length) out += `<div class="qd-chips" style="margin-top:6px">${rec.map(x => `<button type="button" data-rq="${esc(x)}" aria-pressed="${norm(x) === k}">${esc(x)}</button>`).join("")}</div>`;
     if (!k) return out;
-    if (!hit.length) return out + `<div class="qd-empty"><b>${md(day)} 没找到这个型号</b><span>换个写法试试，或者看最近几天：</span><button type="button" class="btn" id="qdHist">看最近 ${histDays} 天</button></div>` + histHTML(k);
+    if (!hit.length) return out + `<div class="qd-empty"><b>${md(day)} 没找到这个型号</b><span>换个写法试试，或者看最近几天：</span>${hist ? "" : `<button type="button" class="btn" id="qdHist">看最近 ${histDays} 天</button>`}</div>` + histHTML(k);
     out += totalsHTML(hit.map(x => x[0]));
     out += `<div class="qd-tw" style="max-height:none"><table class="qd-t"><thead>${HEAD}</thead><tbody>${hit.map(([r, i]) => rowHTML(r, i)).join("")}</tbody></table></div>`;
     out += hist ? histHTML(k) : `<div><button type="button" class="btn" id="qdHist">看这个型号最近 ${histDays} 天的走势</button></div>`;
@@ -363,6 +372,8 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
   /* ---------- 渲染 + 事件 ---------- */
   function render() {
     if (tab === "entry") return;
+    if (tab === "query" && box.dataset.v === "query" && $("qdQ") && $("qdQR")) { const tw = $("qdQR").querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0; $("qdQR").innerHTML = queryResults(); const t2 = $("qdQR").querySelector(".qd-tw"); if (t2) t2.scrollLeft = sx; return }
+    box.dataset.v = tab;
     const keepQ = document.activeElement && document.activeElement.id === "qdQ", sel = keepQ ? document.activeElement.selectionStart : 0;
     const old = $("qdMsg"), om = old ? [old.textContent, old.className] : null;
     const tw = box.querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0, sy = tw ? tw.scrollTop : 0;
@@ -393,13 +404,17 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       saveEdit(b.dataset.save, v); return;
     }
     if (b.id === "qdHist") { loadHist(); return }
+    if (b.id === "qdQClr") { qtext = ""; const q = $("qdQ"); if (q) { q.value = ""; q.focus() } render(); return }
+    if (b.dataset.rq) { qtext = b.dataset.rq; const q = $("qdQ"); if (q) q.value = qtext; render(); return }
     if (b.id === "qdScan") { setTab("entry"); const s = $("scanTop"); if (s) s.click(); return }
     if (b.id === "qdCat") { const c = $("catBtn"); if (c) c.click(); return }
     if (b.id === "qdBak") { const c = $("backupBtn"); if (c) { c.click(); msg("正在生成备份…") } return }
     if (b.id === "qdRes") { const c = $("restoreBtn"); if (c) c.click(); return }
     if (b.id === "qdOut") { Cloud.signOut(); return }
   });
-  box.addEventListener("input", e => { if (e.target.id === "qdQ") { qtext = e.target.value; hist = hist && hist !== "loading" ? hist : null; render() } });
+  let rqT = null;
+  box.addEventListener("input", e => { if (e.target.id === "qdQ") { qtext = e.target.value; render(); clearTimeout(rqT); rqT = setTimeout(() => { if (norm(qtext).length >= 3) { saveRecent(qtext) } }, 1500) } });
+  box.addEventListener("keydown", e => { if (e.target.id === "qdQ" && e.key === "Enter") { saveRecent(qtext); e.target.blur(); render() } });
   box.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".qd-ed")) { const s = box.querySelector("[data-save]"); if (s) s.click() } if (e.key === "Escape" && editId) { editId = null; render() } });
 
   /* ---------- 开始 ---------- */
