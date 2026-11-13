@@ -182,15 +182,17 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
   function paintDot() { const d = $("qdDot"); if (!d) return; const left = ckList().filter(c => c.lvl === "高" && !ckRes(c.id)).length; d.hidden = !left; d.textContent = left }
 
   let msgT = null;
-  function msg(t, kind) { const m = $("qdMsg"); if (!m) return; m.textContent = t || ""; m.className = "qd-msg" + (kind ? " " + kind : ""); clearTimeout(msgT); if (kind === "ok") msgT = setTimeout(() => { if ($("qdMsg")) $("qdMsg").textContent = "" }, 6000) }
+  function msg(t, kind) { if (kind === "err" && Cloud.boss && Cloud.boss.justCancelled()) { t = "已取消，没有修改。"; kind = "" } const m = $("qdMsg"); if (!m) return; m.textContent = t || ""; m.className = "qd-msg" + (kind ? " " + kind : ""); clearTimeout(msgT); if (kind === "ok") msgT = setTimeout(() => { if ($("qdMsg")) $("qdMsg").textContent = "" }, 6000) }
 
   /* ---------- 改状态 / 改数据（留修改记录） ---------- */
   async function setStatus(id, s) {
     const r = rows.find(x => x.id === id); if (!r || r.s === s) { openS = null; render(); return }
     const patch = { s }; if (!ST.includes(r.s0)) patch.s0 = r.s;
     patch.hist = (r.hist || []).concat([{ at: new Date().toISOString(), f: { s: r.s }, to: { s } }]).slice(-20);
-    Object.assign(r, patch); openS = null; render(); paintDot();
-    await R.update(id, patch); syncSum(day, rows).catch(() => { });
+    openS = null;
+    try { await R.update(id, patch) } catch (e) { render(); return }
+    Object.assign(r, patch); render(); paintDot();
+    syncSum(day, rows).catch(() => { });
   }
   async function saveEdit(id, vals) {
     const r = rows.find(x => x.id === id); if (!r) return;
@@ -198,16 +200,17 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     for (const k of ["m", "L", "w", "q"]) if (vals[k] !== r[k]) { patch[k] = vals[k]; from[k] = r[k] }
     if (!Object.keys(patch).length) { editId = null; render(); return }
     patch.hist = (r.hist || []).concat([{ at: new Date().toISOString(), f: from, to: Object.assign({}, patch) }]).slice(-20);
-    Object.assign(r, patch); editId = null;
-    await setRes(id, "已改正", true); render();
-    await R.update(id, patch); syncSum(day, rows).catch(() => { });
+    editId = null;
+    try { await R.update(id, patch) } catch (e) { render(); return }
+    Object.assign(r, patch); await setRes(id, "已改正", true).catch(() => { }); render();
+    syncSum(day, rows).catch(() => { });
     msg(`已改正：${Object.keys(from).map(k => ({ m: "型号", L: "长度", w: "支重", q: "支数" }[k]) + " " + from[k] + " → " + patch[k]).join("，")}`, "ok");
   }
   async function setRes(id, v, quiet) {
-    if (!checks) return; checks.res = checks.res || {};
-    if (checks.res[id] === v && !quiet) delete checks.res[id]; else checks.res[id] = v;
-    paintDot(); if (!quiet) render();
-    await KV.set("checks_" + day, checks);
+    if (!checks) return; const nc = JSON.parse(JSON.stringify(checks)); nc.res = nc.res || {};
+    if (nc.res[id] === v && !quiet) delete nc.res[id]; else nc.res[id] = v;
+    try { await KV.set("checks_" + day, nc) } catch (e) { if (!quiet) render(); return }
+    checks = nc; paintDot(); if (!quiet) render();
   }
 
   /* ---------- 导入当天文件 ---------- */
@@ -233,27 +236,31 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     const a = armHist; armHist = null; if (!a) return; busy = true; render();
     try {
       const go = a.days.filter(d => !a.have[d]), list = a.recs.filter(r => go.includes(r.d)).map(r => Object.assign({}, r, { s0: ST.includes(r.s0) ? r.s0 : r.s }));
+      await Cloud.boss.confirm([`导入历史数据：${go.length} 天、${list.length} 行` + (Object.keys(a.have).length ? `（已经有数据的 ${Object.keys(a.have).length} 天会跳过，不改动）` : "")]);
+      Cloud.boss.begin(); a.scoped = true;
       if (list.length) await R.putMany(list);
       for (const d of go) await syncSum(d, list.filter(r => r.d === d));
       try { const W = window.WC; if (W && a.catalog.length) { const cat = W.cat(); const hv = new Set(cat.map(x => x.m + "|" + x.L + "|" + x.w)); let add = 0; a.catalog.forEach(x => { const k = x.m + "|" + x.L + "|" + x.w; if (x && x.m && !hv.has(k)) { cat.push(x); hv.add(k); add++ } }); if (add) await W.S.setCat(cat) } } catch (e) { }
-      busy = false; render();
+      busy = false; Cloud.boss.end(); a.scoped = false; render();
       msg(`历史数据已导入：${go.length} 天、${list.length} 行${Object.keys(a.have).length ? `；跳过已经有数据的 ${Object.keys(a.have).length} 天` : ""}。看板里已经能看到走势。`, "ok");
-    } catch (e) { busy = false; console.error(e); render(); msg("导入没有完成，请检查网络后再导入一次（已经导入的日子会自动跳过）。", "err") }
+    } catch (e) { busy = false; if (a.scoped) Cloud.boss.end(); console.error(e); render(); msg("导入没有完成，请检查网络后再导入一次（已经导入的日子会自动跳过）。", "err") }
   }
   async function doImport() {
     const a = armImport; armImport = null; if (!a) return; busy = true; render();
     try {
       const keep = new Set(a.recs.map(r => r.id));
       const old = a.have.filter(r => !keep.has(r.id)).map(r => r.id);
+      await Cloud.boss.confirm([`导入 ${md(a.d).trim() || a.d}：${a.recs.length} 行，查错单 ${a.checks.length} 处` + (a.have.length ? `；会替换这一天原来的 ${a.have.length} 行` : "")]);
+      Cloud.boss.begin(); a.scoped = true;
       if (old.length) await R.delMany(old);
       await R.putMany(a.recs.map(r => Object.assign({}, r, { s0: ST.includes(r.s0) ? r.s0 : r.s })));
       const oldC = (await KV.get("checks_" + a.d)) || {}; const res = {};
       Object.entries(oldC.res || {}).forEach(([k, v]) => { if (keep.has(k)) res[k] = v });
       await KV.set("checks_" + a.d, { list: a.checks, res, at: new Date().toISOString(), n: a.recs.length });
       try { const W = window.WC; if (W && a.catalog.length) { const cat = W.cat(); const hv = new Set(cat.map(x => x.m + "|" + x.L + "|" + x.w)); let add = 0; a.catalog.forEach(x => { const k = x.m + "|" + x.L + "|" + x.w; if (x && x.m && !hv.has(k)) { cat.push(x); hv.add(k); add++ } }); if (add) await W.S.setCat(cat) } } catch (e) { }
-      busy = false; await load(); if (window.WC && WC.reload) WC.reload();
+      busy = false; Cloud.boss.end(); a.scoped = false; await load(); if (window.WC && WC.reload) WC.reload();
       msg(`已导入 ${md(a.d)}：${a.recs.length} 行${a.have.length ? `（替换了原来的 ${a.have.length} 行）` : ""}，查错单 ${a.checks.length} 处。`, "ok");
-    } catch (e) { busy = false; console.error(e); render(); msg("导入没有完成，请检查网络后再导入一次（重复导入不会多出数据）。", "err") }
+    } catch (e) { busy = false; if (a.scoped) Cloud.boss.end(); console.error(e); render(); msg("导入没有完成，请检查网络后再导入一次（重复导入不会多出数据）。", "err") }
   }
 
   /* ---------- 导出 Excel ---------- */
@@ -412,9 +419,21 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       ${it("拍照识别", "在 App 里直接拍手写单识别。需要 Claude API 密钥（按用量付费），以后再开。", `<button type="button" class="btn" id="qdScan">打开拍照识别</button>`)}
       ${it("型号库", "录入时下拉用的型号、长度、支重。", `<button type="button" class="btn" id="qdCat">打开型号库</button>`)}
       ${it("备份 / 恢复", "把云端全部数据存成一个文件，或者从备份文件恢复。", `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="qdBak">备份全部数据</button><button type="button" class="btn" id="qdRes">从备份恢复</button></div>`)}
+      ${it("BOSS 授权 / 操作记录", (Cloud.boss.left() ? "已授权，还剩 " + Math.ceil(Cloud.boss.left() / 60000) + " 分钟。" : "已锁上。") + "所有改动都要确认并输授权码，5 分钟内不用重输。每次改动都有记录，最近一次可以撤销。",
+        `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" id="qdLog">${logList ? "收起操作记录" : "操作记录"}</button><button type="button" class="btn" id="qdUndo">撤销最近一次改动</button><button type="button" class="btn" id="qdLock">立即锁上</button><button type="button" class="btn" id="qdPin">设置 / 修改授权码</button><button type="button" class="btn" id="qdForgot">忘记授权码</button></div>`)}
       ${it("账号", esc("当前账号：" + (Cloud.email() || "")), `<button type="button" class="btn" id="qdOut">退出登录</button>`)}
-    </div>`;
+    </div>${logList ? viewLog() : ""}`;
   }
+
+  let logList = null;
+  function viewLog() {
+    const f = t => { const d = new Date(t); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") };
+    if (!logList.length) return `<div class="qd-trend" style="margin-top:10px"><b>操作记录</b><div class="sub">还没有改动记录。</div></div>`;
+    return `<div class="qd-trend" style="margin-top:10px"><b>操作记录（最近 ${logList.length} 次）</b>${logList.map(x => `<div style="border-top:1px solid var(--line);padding:8px 0;font-size:14px;overflow-wrap:anywhere">
+      <div class="sub">${f(x.at)}　共 ${x.n || (x.items || []).length} 项${x.undone ? "　<b style='color:var(--danger)'>已撤销</b>" : ""}</div>
+      ${(x.items || []).slice(0, 6).map(t => `<div>${esc(t)}</div>`).join("")}${(x.n || 0) > 6 ? `<div class="sub">……还有 ${x.n - 6} 项</div>` : ""}</div>`).join("")}</div>`;
+  }
+  async function refreshLog() { try { logList = await Cloud.boss.log(40) } catch (e) { logList = []; msg("读取操作记录失败，请检查网络。", "err") } if (tab === "more") render() }
 
   /* ---------- 页面：库存看板 ---------- */
   const SC = { "已入库": "#7fb069", "包装中": "#6fa8dc", "刚生产": "#f6b26b" };
@@ -567,9 +586,10 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     } catch (e) { console.error(e); bigBusy = false; dataFull = true; render(); msg("生成失败，请检查网络后再试。", "err") }
   }
   async function setReview(key, ok, to) {
-    await loadReview(); const cur = review[key] || {};
-    if (cur.ok === ok && !to) delete review[key]; else review[key] = to ? { ok, to } : { ok };
-    dataFull = false; render(); await KV.set("stdlib_review", review);
+    await loadReview(); const nr = JSON.parse(JSON.stringify(review)), cur = nr[key] || {};
+    if (cur.ok === ok && !to) delete nr[key]; else nr[key] = to ? { ok, to } : { ok };
+    try { await KV.set("stdlib_review", nr) } catch (e) { return }
+    review = nr; dataFull = false; render();
   }
   async function exportReview() {
     await loadReview(); const A = ana(), lib = libList(A), items = {};
@@ -639,6 +659,11 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     if (b.id === "qdQClr") { qtext = ""; const q = $("qdQ"); if (q) { q.value = ""; q.focus() } render(); return }
     if (b.dataset.rq) { qtext = b.dataset.rq; const q = $("qdQ"); if (q) q.value = qtext; render(); return }
     if (b.id === "qdScan") { setTab("entry"); const s = $("scanTop"); if (s) s.click(); return }
+    if (b.id === "qdLog") { if (logList) { logList = null; render() } else refreshLog(); return }
+    if (b.id === "qdLock") { Cloud.boss.lock(); render(); msg("已锁上。下次改动要重新输授权码。", "ok"); return }
+    if (b.id === "qdPin") { Cloud.boss.changePin().then(() => render()); return }
+    if (b.id === "qdForgot") { const pw = prompt("忘记授权码：请输入你的登录密码（Firebase 账号密码），验证后重新设置授权码。"); if (pw) Cloud.boss.forgot(pw).catch(() => msg("登录密码不对，或者网络不通。", "err")); return }
+    if (b.id === "qdUndo") { Cloud.boss.undoLast().then(t => { msg(t, /^已撤销/.test(t) ? "ok" : "err"); if (logList) refreshLog() }).catch(() => { }); return }
     if (b.id === "qdCat") { const c = $("catBtn"); if (c) c.click(); return }
     if (b.id === "qdBak") { const c = $("backupBtn"); if (c) { c.click(); msg("正在生成备份…") } return }
     if (b.id === "qdRes") { const c = $("restoreBtn"); if (c) c.click(); return }

@@ -368,7 +368,7 @@ $("day").value=today();
 try{const s=localStorage.getItem("wc_status");if(ST.includes(s))status=s}catch(e){}
 
 function setSync(state,text){if(state==="bad"){const b=$("banner");b.hidden=false;b.textContent=text}}
-function say(t,err){const m=$("msg");m.textContent=t||"";m.className="msg"+(err?" err":"")}
+function say(t,err){if(err&&window.Cloud&&Cloud.boss&&Cloud.boss.justCancelled())t="已取消，没有修改。",err=false;const m=$("msg");m.textContent=t||"";m.className="msg"+(err?" err":"")}
 
 /* ---------- status segment ---------- */
 function paintSeg(){for(const b of $("seg").children)b.setAttribute("aria-pressed",String(b.dataset.s===status))}
