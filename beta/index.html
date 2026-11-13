@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="铝型材测试">
+<meta name="theme-color" content="#1f5f7a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>铝型材管理（测试版）</title>
+<style>
+/* Layout: workshop tablet tool. Left = entry slip (sticky), right = today's ledger. Stacks on phone. */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --ink:#1b2328; --muted:#5d6a72; --line:#d3dade; --soft:#e4e9ec;
+  --accent:#1f5f7a; --accent-ink:#ffffff; --danger:#b3261e; --warn-bg:#fff4cc; --warn-ink:#6b4e00;
+  --st-in:#e2efda; --st-in-ink:#2f5d1e; --st-pk:#ddebf7; --st-pk-ink:#1f4e79; --st-new:#fce4d6; --st-new-ink:#8a3b0e; --st-sh:#e4e4e4; --st-sh-ink:#555555; --len:#5b2fa8; --len-bg:#ece4fb; --wt:#b3125c; --wt-bg:#fde3ef;
+  --f-body:"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  --f-data:"SF Mono",ui-monospace,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171a; --panel:#1b2226; --ink:#e6ecef; --muted:#9aa8b0; --line:#2f3a40; --soft:#242d32;
+  --accent:#5fb3d4; --accent-ink:#0d1a20; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a;
+  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --st-sh:#2b2b2b; --st-sh-ink:#b5b5b5; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171a; --panel:#1b2226; --ink:#e6ecef; --muted:#9aa8b0; --line:#2f3a40; --soft:#242d32;
+  --accent:#5fb3d4; --accent-ink:#0d1a20; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a;
+  --st-in:#24361c; --st-in-ink:#b9dca4; --st-pk:#1c2d3d; --st-pk-ink:#a9cdee; --st-new:#3a2618; --st-new-ink:#f2bb94; --st-sh:#2b2b2b; --st-sh-ink:#b5b5b5; --len:#c9b2ff; --len-bg:#2e2348; --wt:#ff9cc6; --wt-bg:#45192e;
+  color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:16px;line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 40px}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.num,.data{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px}
+header.top h1{font-size:22px;font-weight:700;margin:0;letter-spacing:.02em}
+header.top .sub{color:var(--muted);font-size:13px}
+.grow{flex:1}
+.datebox{display:flex;align-items:center;gap:8px}
+.datebox input{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;min-height:44px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 14px;min-height:44px;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn:disabled{opacity:.5;cursor:default}
+.sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.sync.ok i{background:#3b9a4c}.sync.bad i{background:var(--danger)}
+.banner{background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:10px 14px;font-size:14px}
+
+.totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.tcard{border-radius:var(--r);padding:10px 14px;background:var(--panel);border:1px solid var(--line);min-width:0}
+.tcard .lab{font-size:13px;font-weight:500;display:flex;justify-content:space-between;gap:6px}
+.tcard .big{font-family:var(--f-data);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.tcard .sm{font-family:var(--f-data);font-size:13px;color:var(--muted)}
+.tcard.in{background:var(--st-in);color:var(--st-in-ink);border-color:transparent}
+.tcard.pk{background:var(--st-pk);color:var(--st-pk-ink);border-color:transparent}
+.tcard.nw{background:var(--st-new);color:var(--st-new-ink);border-color:transparent}
+.tcard.in .sm,.tcard.pk .sm,.tcard.nw .sm{color:inherit;opacity:.8}
+.tcard{cursor:pointer;text-align:left;font:inherit;width:100%;-webkit-tap-highlight-color:transparent}
+.tcard .arr{display:inline-block;transition:transform .15s;margin-left:4px;font-size:11px}
+.tcard[aria-expanded="true"] .arr{transform:rotate(180deg)}
+.tcard[aria-expanded="true"]{outline:3px solid var(--accent);outline-offset:-1px}
+#tdrop{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+#tdrop .td-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;font-weight:700;border-bottom:1px solid var(--line)}
+#tdrop .td-h button{border:1px solid var(--line);background:var(--panel);border-radius:8px;min-height:36px;padding:2px 12px}
+#tdrop .td-w{max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch}
+#tdrop table{border-collapse:collapse;width:100%;font-family:var(--f-data);font-size:14px}
+#tdrop th{position:sticky;top:0;background:var(--accent);color:var(--accent-ink);font-weight:600;padding:6px 8px;white-space:nowrap;font-family:var(--f-body)}
+#tdrop td{padding:7px 8px;border-bottom:1px solid var(--soft);white-space:nowrap;text-align:right}
+#tdrop td.m{text-align:left;font-weight:700}#tdrop td.pg{color:var(--muted);text-align:left}
+#tdrop tr.r{cursor:pointer}#tdrop tr.r:active td{background:var(--soft)}
+#tdrop tr.flag td.m{color:var(--danger)}
+#tdrop tr.ed td{background:var(--bg);text-align:left;white-space:normal}
+#tdrop .edrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 0}
+#tdrop .edrow input{width:120px;min-height:44px;font-size:20px;font-family:var(--f-data);text-align:right;border:2px solid var(--accent);border-radius:8px;padding:2px 8px;background:var(--panel);color:var(--ink)}
+#tdrop .edrow .pill{border:2px solid transparent;min-height:40px;padding:2px 12px;font-size:14px}
+#tdrop .edrow .pill[aria-pressed="true"]{border-color:var(--ink)}
+#tdrop .edrow .note{flex-basis:100%;font-size:12px;color:var(--muted)}
+
+.cols{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.leftcol{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);min-width:0;display:flex;flex-direction:column;gap:12px}
+.entry{display:flex;flex-direction:column;gap:12px}
+.qk-search{display:flex;flex-direction:column;gap:6px}
+.qk-search input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;min-height:46px;width:100%;font-family:var(--f-data);font-size:17px;text-transform:uppercase}
+.qk-res{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-height:260px;overflow-y:auto}
+.qk-res button{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:0;border-bottom:1px solid var(--soft);background:var(--panel);padding:8px 12px;min-height:48px}
+.qk-res button:last-child{border-bottom:0}
+.qk-res .m{font-family:var(--f-data);font-weight:700;font-size:17px}
+.qk-res .st{font-size:13px;color:var(--muted);white-space:nowrap}
+.qk-res .add{color:var(--accent);font-weight:700}
+.qk-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.qk-pos{font-family:var(--f-data);color:var(--muted);font-size:14px}
+.qk-model{font-family:var(--f-data);font-size:32px;font-weight:700;line-height:1.15;overflow-wrap:anywhere}
+.qk-spec{font-family:var(--f-data);color:var(--muted);font-size:15px}
+.qk-prev{font-size:14px;color:var(--muted)}
+.qk-val{font-family:var(--f-data);font-size:44px;font-weight:700;text-align:right;background:var(--bg);border:2px solid var(--accent);border-radius:10px;padding:6px 14px;min-height:72px;font-variant-numeric:tabular-nums}
+.qk-val.empty{color:var(--muted);border-color:var(--line)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{min-height:62px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-family:var(--f-data);font-size:26px;font-weight:600;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.pad button:active{background:var(--soft)}
+.pad .fn{font-family:var(--f-body);font-size:16px;font-weight:500}
+.qk-nav{display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px}
+.qk-nav button{min-height:58px;border-radius:10px;font-weight:700;font-size:17px;touch-action:manipulation}
+.startbox{display:flex;flex-direction:column;gap:10px;align-items:stretch;padding:20px 8px;text-align:center;color:var(--muted)}
+.startbox .btn{font-size:16px;min-height:52px}
+.item .q.pend{color:var(--muted);font-weight:500;font-size:14px;border:1px dashed var(--line);border-radius:6px;padding:0 8px}
+.item.cur{background:var(--soft)}
+
+.entry h2,.ledger h2{font-size:15px;margin:0;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.entry h2 .mode{font-size:12px;font-weight:500;background:var(--warn-bg);color:var(--warn-ink);border-radius:999px;padding:2px 10px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:13px;color:var(--muted);font-weight:500}
+.field input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;min-height:48px;width:100%}
+.field input.model{font-family:var(--f-data);font-size:20px;font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+.field input.qty{font-family:var(--f-data);font-size:28px;font-weight:600}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sugg{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-height:300px;overflow-y:auto}
+.sugg button{display:flex;justify-content:space-between;gap:10px;align-items:baseline;text-align:left;border:0;border-bottom:1px solid var(--soft);background:var(--panel);padding:10px 12px;min-height:46px}
+.sugg button:last-child{border-bottom:0}
+.sugg button:hover,.sugg button:focus-visible{background:var(--soft)}
+.sugg .m{font-family:var(--f-data);font-weight:600;font-size:17px}
+.sugg .d{font-family:var(--f-data);font-size:14px;color:var(--muted);white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 12px;min-height:36px;font-family:var(--f-data);font-size:14px}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg button{border:2px solid transparent;border-radius:8px;min-height:48px;font-weight:700}
+.seg .in{background:var(--st-in);color:var(--st-in-ink)}
+.seg .pk{background:var(--st-pk);color:var(--st-pk-ink)}
+.seg .nw{background:var(--st-new);color:var(--st-new-ink)}
+.seg button[aria-pressed="true"]{border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+.calc{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px}
+.calc b{font-family:var(--f-data);color:var(--ink);font-variant-numeric:tabular-nums}
+.warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:8px 12px;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.actions .primary{flex:1;font-size:18px;min-height:54px}
+.msg{font-size:14px;min-height:21px;color:var(--muted)}
+.msg.err{color:var(--danger)}
+
+.ledger{display:flex;flex-direction:column;gap:10px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs{display:flex;gap:4px;background:var(--soft);border-radius:8px;padding:3px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;border-radius:6px;padding:6px 12px;min-height:38px;font-size:14px}
+.tabs button[aria-pressed="true"]{background:var(--panel);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tools input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px;min-width:0;flex:1 1 140px}
+.bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:14px}
+.list{display:flex;flex-direction:column}
+.tL,.tW{font-family:var(--f-data);font-weight:700;border-radius:6px;padding:1px 7px;white-space:nowrap;display:inline-block}
+.tL{color:var(--len);background:var(--len-bg)}
+.tW{color:var(--wt);background:var(--wt-bg)}
+.qk-spec .tL,.qk-spec .tW{font-size:20px;padding:3px 10px;margin:4px 6px 0 0}
+label.lL{color:var(--len);font-weight:700}label.lW{color:var(--wt);font-weight:700}
+#fLen{border:2px solid var(--len);color:var(--len);font-weight:700}#fW{border:2px solid var(--wt);color:var(--wt);font-weight:700}
+.vt{display:inline-flex;gap:2px;background:var(--soft);border-radius:8px;padding:2px;font-size:13px;font-weight:500}
+.vt button{border:0;background:transparent;border-radius:6px;padding:4px 12px;min-height:32px}
+.vt button[aria-pressed="true"]{background:var(--panel);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tblwrap{max-height:72vh;overflow:auto;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch}
+table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:760px;font-family:var(--f-data);font-size:14px;font-variant-numeric:tabular-nums;--off:0px}
+table.grid.sm{--off:40px}
+.grid th,.grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 8px;height:44px;white-space:nowrap;text-align:right;background:var(--panel)}
+.grid th{position:sticky;top:0;z-index:3;background:#305496;color:#fff;font-family:var(--f-body);font-size:13px;font-weight:700;text-align:center;height:40px}
+.grid td.tl,.grid th.tl{text-align:left}
+.grid .c-chk{position:sticky;left:0;z-index:2;width:40px;min-width:40px;text-align:center;padding:0}
+.grid .c-idx{position:sticky;left:var(--off);z-index:2;width:44px;min-width:44px;text-align:center;color:var(--muted)}
+.grid .c-m{position:sticky;left:calc(var(--off) + 44px);z-index:2;font-weight:700;cursor:pointer;box-shadow:2px 0 0 var(--line)}
+.grid th.c-chk,.grid th.c-idx,.grid th.c-m{z-index:4;color:#fff}
+.grid tr.sh td{background:var(--st-sh);color:var(--st-sh-ink)} .grid tr.in td{background:var(--st-in)} .grid tr.pk td{background:var(--st-pk)} .grid tr.nw td{background:var(--st-new)}
+.grid tr.picked td{box-shadow:inset 0 0 0 9999px rgba(31,95,122,.14)}
+.grid tr.cur td{border-bottom:2px solid var(--accent)}
+.grid td.c-L{color:var(--len);font-weight:700} .grid td.c-w{color:var(--wt);font-weight:700}
+.grid td.c-q{cursor:pointer;font-weight:700;min-width:96px}
+.grid td.c-q .pend{color:var(--muted);font-weight:400;font-family:var(--f-body);font-size:13px}
+.grid td.c-q.editing{padding:2px 4px}
+.grid td.c-q input{width:92px;height:36px;border:2px solid var(--accent);border-radius:6px;background:var(--panel);font:inherit;font-weight:700;text-align:right;padding:0 6px}
+.grid td.c-q .nx{height:36px;min-width:36px;margin-left:4px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:700}
+.grid td.c-s{cursor:pointer;text-align:center;font-family:var(--f-body)}
+.grid td.c-s .opts{display:inline-flex;gap:4px}
+.grid td.c-s .opts button{border:1px solid var(--line);border-radius:6px;padding:2px 6px;min-height:32px;font-size:12px;font-weight:700}
+.grid td.c-n{text-align:left;font-family:var(--f-body);font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.grid td.c-n.flag{color:#c00000;font-weight:700}
+.grid tfoot td{position:sticky;bottom:0;z-index:3;background:#d9e1f2;color:#1b2328;font-weight:700;border-top:2px solid var(--line)}
+.grid tfoot td.c-chk,.grid tfoot td.c-idx,.grid tfoot td.c-m{z-index:4}
+.item.selmode{grid-template-columns:34px 6px minmax(0,1fr) auto}
+.chk{width:28px;height:28px;border-radius:7px;border:2px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent-ink);cursor:pointer}
+.chk.on{background:var(--accent);border-color:var(--accent)}
+.item.picked{background:var(--soft)}
+.selbar{position:sticky;bottom:max(8px,env(safe-area-inset-bottom,0px));z-index:5;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.selbar b{font-family:var(--f-data)}
+.item{display:grid;grid-template-columns:6px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--soft)}
+.item:last-child{border-bottom:0}
+.item .bar{align-self:stretch;border-radius:3px}
+.item.in .bar{background:var(--st-in-ink)}.item.pk .bar{background:var(--st-pk-ink)}.item.nw .bar{background:var(--st-new-ink)}
+.item .main{min-width:0;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.item .l1{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.item .mm{font-family:var(--f-data);font-weight:600;font-size:17px}
+.item .q{font-family:var(--f-data);font-weight:600;font-size:17px;font-variant-numeric:tabular-nums}
+.item .l2{font-family:var(--f-data);font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.item .note{font-size:13px;color:var(--warn-ink);background:var(--warn-bg);border-radius:6px;padding:1px 8px;align-self:flex-start;overflow-wrap:anywhere}
+.item .side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.pill{font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;white-space:nowrap}
+.pill.sh{background:var(--st-sh);color:var(--st-sh-ink)}.item.sh .bar{background:var(--st-sh-ink)}.tcard.sh{background:var(--st-sh);color:var(--st-sh-ink);border-color:transparent}.tcard.sh .sm{color:inherit;opacity:.8}
+.pill.in{background:var(--st-in);color:var(--st-in-ink)}.pill.pk{background:var(--st-pk);color:var(--st-pk-ink)}.pill.nw{background:var(--st-new);color:var(--st-new-ink)}
+.mv{border:1px solid var(--st-in-ink);color:var(--st-in-ink);background:var(--st-in);border-radius:8px;padding:4px 10px;min-height:38px;font-size:13px;font-weight:700;white-space:nowrap}
+.empty{color:var(--muted);text-align:center;padding:40px 12px;font-size:15px}
+.foot{color:var(--muted);font-size:12px;text-align:center}
+
+@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}.leftcol{position:static}}
+@media (max-width:560px){.totals{grid-template-columns:repeat(2,minmax(0,1fr))}.tcard .big{font-size:19px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+html,body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{padding-top:max(12px,env(safe-area-inset-top,0px));padding-bottom:max(40px,env(safe-area-inset-bottom,0px))}
+.more{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);width:min(560px,calc(100vw - 32px));max-height:80vh;padding:16px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.catrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--soft)}
+.catlist{max-height:50vh;overflow-y:auto}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>铝型材管理 <span style="font-size:13px;background:#c00000;color:#fff;border-radius:6px;padding:1px 8px;vertical-align:middle">测试版</span></h1>
+      <div class="sub">型号从下拉选，长度和支重自动带出，只填支数</div>
+    </div>
+    <div class="grow"></div>
+    <div class="datebox">
+      <label for="day" class="sub">盘点日期</label>
+      <input type="date" id="day">
+    </div>
+    <button class="btn primary" id="scanTop" type="button">📷 拍照识别</button>
+    <button class="btn primary" id="quickTop" type="button">快速填数</button>
+    <button class="btn" id="exportBtn" type="button">导出 Excel</button>
+    <div class="sync" id="cloudStatus"><i></i><span>连接中…</span></div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="totals" id="totals" aria-label="当日合计"></section>
+
+  <div class="cols">
+    <div class="leftcol">
+    <section class="panel entry" id="quick" hidden aria-label="快速填数">
+      <div class="qk-head"><span class="qk-pos" id="qkPos"></span><button type="button" class="btn" id="qkExit">退出快速填数</button></div>
+      <div class="qk-search">
+        <input id="qkQ" placeholder="🔍 搜型号，跳过去填" spellcheck="false" autocapitalize="characters" autocomplete="off">
+        <div class="qk-res" id="qkRes" hidden></div>
+      </div>
+      <div><div class="qk-model" id="qkModel"></div><div class="qk-spec" id="qkSpec"></div><div class="qk-prev" id="qkPrev"></div></div>
+      <div class="seg" id="qkSeg">
+        <button type="button" class="in" data-s="已入库" aria-pressed="false">已入库</button>
+        <button type="button" class="pk" data-s="包装中" aria-pressed="false">包装中</button>
+        <button type="button" class="nw" data-s="刚生产" aria-pressed="false">刚生产</button>
+      </div>
+      <div class="qk-val empty" id="qkVal" aria-live="polite">支数</div>
+      <div class="pad" id="pad">
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+        <button type="button" class="fn" data-k="clr">清空</button><button type="button" data-k="0">0</button><button type="button" class="fn" data-k="del">⌫ 退格</button>
+      </div>
+      <div class="qk-nav">
+        <button type="button" class="btn" id="qkPrevBtn">上一个</button>
+        <button type="button" class="btn" id="qkSkip">跳过</button>
+        <button type="button" class="btn primary" id="qkOk">确定 · 下一个</button>
+      </div>
+      <div class="msg" id="qkMsg" role="status"></div>
+    </section>
+    <form class="panel entry" id="form" autocomplete="off">
+      <h2><span id="formTitle">新录一条</span><span class="mode" id="editTag" hidden>正在修改</span></h2>
+      <div class="field">
+        <label for="fModel">型号</label>
+        <input id="fModel" class="model" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="输入几个字，例如 7801">
+      </div>
+      <div class="sugg" id="sugg" hidden></div>
+      <div class="row2">
+        <div class="field"><label for="fLen" class="lL">长度(米)</label><input id="fLen" class="data" inputmode="decimal" placeholder="3"></div>
+        <div class="field"><label for="fW" class="lW">理论支重(kg/6米)</label><input id="fW" class="data" inputmode="decimal" placeholder="0.172"></div>
+      </div>
+      <div class="chips" id="lenChips" aria-label="常用长度"></div>
+      <div class="field"><label for="fQty">支数</label><input id="fQty" class="qty" inputmode="numeric" pattern="[0-9]*" placeholder="0"></div>
+      <div class="field"><span class="sub" style="font-size:13px;color:var(--muted);font-weight:500">状态</span>
+        <div class="seg" id="seg">
+          <button type="button" class="in" data-s="已入库" aria-pressed="false">已入库</button>
+          <button type="button" class="pk" data-s="包装中" aria-pressed="false">包装中</button>
+          <button type="button" class="nw" data-s="刚生产" aria-pressed="true">刚生产</button>
+        </div>
+      </div>
+      <div class="field"><label for="fNote">备注（可不填）</label><input id="fNote" placeholder="例如 棒、未进炉"></div>
+      <div class="warn" id="warn" hidden></div>
+      <div class="calc"><span>实际支重 <b id="cPiece">—</b> kg/支</span><span>理论重量 <b id="cKg">—</b> kg</span></div>
+      <div class="actions">
+        <button class="btn primary" id="saveBtn" type="submit">保存这一条</button>
+        <button class="btn" id="cancelBtn" type="button" hidden>取消修改</button>
+        <button class="btn danger" id="delBtn" type="button" hidden>删除</button>
+      </div>
+      <div class="msg" id="msg" role="status"></div>
+    </form>
+    </div>
+
+    <section class="panel ledger" aria-label="当日记录">
+      <h2><span id="listTitle">今天的记录</span><span style="display:flex;gap:10px;align-items:center"><span class="vt" id="vt"><button type="button" data-v="table" aria-pressed="true">表格</button><button type="button" data-v="card" aria-pressed="false">卡片</button></span><span class="sub num" id="listCount"></span></span></h2>
+      <div class="tools">
+        <div class="tabs" id="tabs">
+          <button type="button" data-f="" aria-pressed="true">全部</button>
+          <button type="button" data-f="已入库" aria-pressed="false">已入库</button>
+          <button type="button" data-f="包装中" aria-pressed="false">包装中</button>
+          <button type="button" data-f="刚生产" aria-pressed="false">刚生产</button>
+          <button type="button" data-f="已出货" aria-pressed="false">已出货</button>
+        </div>
+        <input id="q" placeholder="搜型号" spellcheck="false" autocapitalize="characters">
+        <button type="button" class="btn" id="selBtn">多选</button>
+      </div>
+      <div class="bulk" id="pend" hidden></div>
+      <div class="bulk" id="bulk" hidden></div>
+      <div class="selbar" id="selbar" hidden></div>
+      <div class="list" id="list"><div class="empty">正在读取记录…</div></div>
+    </section>
+  </div>
+  <div class="more">
+    <button class="btn" type="button" id="catBtn">型号库</button>
+    <button class="btn" type="button" id="backupBtn">备份全部数据</button>
+    <button class="btn" type="button" id="restoreBtn">从备份恢复</button>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="more" id="migBox" hidden><button class="btn primary" type="button" id="migBtn">把这台设备上的旧数据上传到云端</button></div>
+  <div class="foot">数据保存在你的云端账号里，电脑、iPad、手机登录同一个账号自动同步，没网时也能用。<span id="who"></span> <button class="btn" type="button" id="logoutBtn" style="min-height:32px;padding:2px 10px;font-size:12px">退出登录</button></div>
+  <dialog id="catDlg">
+    <h2 style="margin:0 0 8px;font-size:16px">型号库 <span class="sub num" id="catCount"></span></h2>
+    <input id="catQ" placeholder="搜型号" style="width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:40px">
+    <div class="catlist" id="catList"></div>
+    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="catClose">关闭</button></div>
+  </dialog>
+</div>
+
+<script>window.CLOUD_SUFFIX="_beta";window.CHUHUO_URL="../chuhuo/"</script>
+<script src="lib/firebase-app-compat.js"></script>
+<script src="lib/firebase-auth-compat.js"></script>
+<script src="lib/firebase-firestore-compat.js"></script>
+<script src="lib/cloud.js"></script>
+<script src="catalog.js"></script>
+<script src="template.js"></script>
+<script>
+(function(){
+const ST=["已入库","包装中","刚生产"], CLS={"已入库":"in","包装中":"pk","刚生产":"nw","已出货":"sh"}, SHIP="已出货";
+const $=id=>document.getElementById(id);
+const fmt0=n=>Number(n||0).toLocaleString("zh-CN",{maximumFractionDigits:0});
+const fmt1=n=>Number(n||0).toLocaleString("zh-CN",{minimumFractionDigits:1,maximumFractionDigits:1});
+const norm=s=>String(s||"").toUpperCase().replace(/[\s\-－_]/g,"");
+const clean=s=>String(s||"").toUpperCase().replace(/\s+/g,"").replace(/－/g,"-");
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+let db=true, catalog=[], records=[], unsubRec=null, editing=null, status="刚生产", filter="", search="", bulkArm=false, delArm=false;
+$("day").value=today();
+try{const s=localStorage.getItem("wc_status");if(ST.includes(s))status=s}catch(e){}
+
+function setSync(state,text){if(state==="bad"){const b=$("banner");b.hidden=false;b.textContent=text}}
+function say(t,err){const m=$("msg");m.textContent=t||"";m.className="msg"+(err?" err":"")}
+
+/* ---------- status segment ---------- */
+function paintSeg(){for(const b of $("seg").children)b.setAttribute("aria-pressed",String(b.dataset.s===status))}
+$("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;status=b.dataset.s;paintSeg();try{localStorage.setItem("wc_status",status)}catch(e){}});
+paintSeg();
+
+/* ---------- length chips ---------- */
+const LENS=[3,2.45,2.5,2.95,2.98,3.1,6];
+function paintLen(){const v=parseFloat($("fLen").value);$("lenChips").innerHTML=LENS.map(l=>`<button type="button" class="chip${v===l?" on":""}" data-l="${l}">${l}米</button>`).join("")}
+$("lenChips").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;$("fLen").value=b.dataset.l;paintLen();update()});
+paintLen();
+
+/* ---------- suggestions ---------- */
+function suggest(){
+  const raw=$("fModel").value, k=norm(raw), box=$("sugg");
+  if(!k){box.hidden=true;box.innerHTML="";return}
+  const used={};records.forEach(r=>{used[r.m+"|"+r.L+"|"+r.w]=(used[r.m+"|"+r.L+"|"+r.w]||0)+1});
+  const hits=catalog.filter(c=>norm(c.m).includes(k)).map(c=>{const n=norm(c.m);return{c,score:(n===k?0:n.startsWith(k)?1:2)*1000-(used[c.m+"|"+c.L+"|"+c.w]||0)}})
+    .sort((a,b)=>a.score-b.score||a.c.m.localeCompare(b.c.m)||a.c.L-b.c.L||a.c.w-b.c.w).slice(0,10);
+  if(!hits.length){box.hidden=false;box.innerHTML=`<div class="empty" style="padding:12px">型号库里没有“${esc(clean(raw))}”。填好长度和支重后保存，会自动加入型号库。</div>`;return}
+  box.hidden=false;
+  box.innerHTML=hits.map(({c})=>`<button type="button" data-m="${esc(c.m)}" data-l="${c.L}" data-w="${c.w}"><span class="m">${esc(c.m)}</span><span class="d"><span class="tL">${c.L}米</span> <span class="tW">${c.w}</span></span></button>`).join("");
+}
+$("fModel").addEventListener("input",()=>{suggest();update()});
+$("fModel").addEventListener("focus",suggest);
+$("sugg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  $("fModel").value=b.dataset.m;$("fLen").value=b.dataset.l;$("fW").value=b.dataset.w;
+  $("sugg").hidden=true;paintLen();update();$("fQty").focus()});
+["fLen","fW","fQty"].forEach(id=>$(id).addEventListener("input",()=>{if(id==="fLen")paintLen();update()}));
+
+/* ---------- live calc + checks ---------- */
+function readForm(){return{m:clean($("fModel").value),L:parseFloat($("fLen").value),w:parseFloat($("fW").value),q:parseInt(String($("fQty").value).replace(/[^\d]/g,""),10),n:$("fNote").value.trim()}}
+function update(){
+  const f=readForm();
+  const piece=(f.w>0&&f.L>0)?f.w/6*f.L:null;
+  $("cPiece").textContent=piece?piece.toFixed(4):"—";
+  $("cKg").textContent=(piece&&f.q>0)?fmt1(piece*f.q):"—";
+  const w=[];
+  if(f.m&&f.L>0){
+    const same=catalog.filter(c=>c.m===f.m&&c.L===f.L);
+    if(f.w>0&&same.length&&!same.some(c=>c.w===f.w))w.push(`以往 ${esc(f.m)} ${f.L}米 的支重是 `+same.map(c=>`<button type="button" class="chip" data-w="${c.w}">${c.w}</button>`).join(" ")+`，这次填的是 ${f.w}，请确认。`);
+    if(!catalog.some(c=>c.m===f.m))w.push(`“${esc(f.m)}”是新型号，请核对写法（C 和 L 容易看错）。`);
+  }
+  if(f.w&&(f.w<0.05||f.w>3))w.push("支重一般在 0.1–2.3 之间，请确认。");
+  if(f.L&&(f.L<1||f.L>8))w.push("长度看起来不对，请确认。");
+  if(f.m&&f.q>0&&records.some(r=>r.id!==editing&&r.m===f.m&&r.L===f.L&&r.w===f.w&&r.q===f.q))w.push("今天已经有一条型号、长度、支重、支数都一样的记录，是不是重复了？");
+  $("warn").hidden=!w.length;$("warn").innerHTML=w.map(x=>`<div>${x}</div>`).join("");
+}
+$("warn").addEventListener("click",e=>{const b=e.target.closest("button[data-w]");if(!b)return;$("fW").value=b.dataset.w;update()});
+
+function resetForm(keepModel){
+  editing=null;delArm=false;
+  if(!keepModel){$("fModel").value="";$("fLen").value="";$("fW").value=""}
+  $("fQty").value="";$("fNote").value="";
+  $("formTitle").textContent="新录一条";$("editTag").hidden=true;$("cancelBtn").hidden=true;$("delBtn").hidden=true;$("delBtn").textContent="删除";
+  $("saveBtn").textContent="保存这一条";paintLen();update();
+}
+$("cancelBtn").addEventListener("click",()=>{resetForm();say("")});
+
+async function addToCatalog(f){
+  if(catalog.some(c=>c.m===f.m&&c.L===f.L&&c.w===f.w))return;
+  catalog=catalog.concat([{m:f.m,L:f.L,w:f.w}]);await S.setCat(catalog);
+}
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  if(!db){say("现在连不上数据库，记录没有保存。",true);return}
+  const f=readForm();
+  if(!f.m)return say("请填型号。",true);
+  if(!(f.L>0))return say("请填长度。",true);
+  if(!(f.w>0))return say("请填理论支重。",true);
+  if(!(f.q>0))return say("请填支数。",true);
+  $("saveBtn").disabled=true;
+  try{
+    if(editing){
+      await S.update(editing,{m:f.m,L:f.L,w:f.w,q:f.q,n:f.n,s:status});
+      say(`已修改：${f.m} ${f.q} 支`);resetForm();
+    }else{
+      await S.add({d:$("day").value,m:f.m,L:f.L,w:f.w,q:f.q,n:f.n,s:status,p:"",t:Date.now()});
+      say(`已保存：${f.m} ${f.L}米 ${f.q} 支（${status}）`);resetForm();
+    }
+    await addToCatalog(f);await loadDay();
+    $("fModel").focus();
+  }catch(err){say("保存失败：iPad 存储空间可能不足，请再点一次保存。",true)}
+  finally{$("saveBtn").disabled=false}
+});
+
+$("delBtn").addEventListener("click",async()=>{
+  if(!editing)return;
+  if(!delArm){delArm=true;$("delBtn").textContent="再点一次确认删除";return}
+  try{await S.del(editing);say("已删除这一条");resetForm();await loadDay()}catch(e){say("删除失败，请再试一次。",true)}
+});
+
+/* ---------- list ---------- */
+function startEdit(r){
+  editing=r.id;delArm=false;
+  $("fModel").value=r.m;$("fLen").value=r.L;$("fW").value=r.w;$("fQty").value=r.q;$("fNote").value=r.n||"";
+  status=r.s;paintSeg();paintLen();update();
+  $("formTitle").textContent="修改记录";$("editTag").hidden=false;$("cancelBtn").hidden=false;$("delBtn").hidden=false;$("delBtn").textContent="删除";
+  $("saveBtn").textContent="保存修改";$("sugg").hidden=true;say("");
+  $("form").scrollIntoView({block:"start",behavior:"smooth"});
+}
+function visible(){const k=norm(search);return records.filter(r=>(!filter||r.s===filter)&&(!k||norm(r.m).includes(k)))}
+function renderTotals(){
+  const agg={};ST.forEach(s=>agg[s]={n:0,q:0,kg:0});let all={n:0,q:0,kg:0};
+  records.forEach(r=>{if(!(r.q>0))return;const kg=r.w/6*r.L*r.q,a=agg[r.s]||(agg[r.s]={n:0,q:0,kg:0});a.n++;a.q+=r.q;a.kg+=kg;if(r.s!==SHIP){all.n++;all.q+=r.q;all.kg+=kg}});
+  const key={"已入库":"已入库","包装中":"包装中","刚生产":"刚生产","已出货":SHIP};
+  const card=(cls,lab,a)=>{const k=key[lab]||"*";return `<button type="button" class="tcard ${cls}" data-td="${k}" aria-expanded="${tdOpen===k}"><div class="lab"><span>${lab}<span class="arr">▼</span></span><span class="num">${a.n} 行</span></div><div class="big">${fmt0(a.q)}<span style="font-size:13px"> 支</span></div><div class="sm">${fmt1(a.kg)} kg</div></button>`};
+  $("totals").innerHTML=card("in","已入库",agg["已入库"])+card("pk","包装中",agg["包装中"])+card("nw","刚生产",agg["刚生产"])+(agg[SHIP]&&agg[SHIP].n?card("sh","已出货",agg[SHIP]):"")+card("",agg[SHIP]&&agg[SHIP].n?"在库合计":"合计",all);
+  renderDrop();
+}
+/* ---------- 点合计卡片展开清单 ---------- */
+let tdOpen=null,tdEdit=null;
+function renderDrop(){
+  let box=$("tdrop");
+  if(!tdOpen){if(box)box.remove();return}
+  if(!box){box=document.createElement("section");box.id="tdrop";box.setAttribute("aria-label","展开的清单");$("totals").insertAdjacentElement("afterend",box)}
+  const rs=records.filter(r=>tdOpen==="*"?r.s!==SHIP:r.s===tdOpen);
+  const title=tdOpen==="*"?"全部（在库）":tdOpen;
+  const tq=rs.reduce((s,r)=>s+(r.q>0?r.q:0),0);
+  const body=rs.map((r,i)=>{const kg=r.q>0?r.w/6*r.L*r.q:0,flag=(r.n||"").startsWith("【需核对】");
+    let tr=`<tr class="r${flag?" flag":""}" data-tr="${r.id}"><td class="pg">${i+1}</td><td class="m">${esc(r.m)}</td><td>${r.L}</td><td>${r.w}</td><td>${r.q==null?"待填":fmt0(r.q)}</td><td>${r.q>0?fmt1(kg):""}</td>${tdOpen==="*"?`<td style="text-align:left"><span class="pill ${CLS[r.s]||""}">${esc(r.s)}</span></td>`:""}</tr>`;
+    if(tdEdit===r.id&&r.s!==SHIP)tr+=`<tr class="ed"><td colspan="${tdOpen==="*"?7:6}"><div class="edrow">
+      <span>支数</span><input id="tdQ" inputmode="numeric" pattern="[0-9]*" value="${r.q!=null?r.q:""}" autocomplete="off">
+      ${ST.map(s=>`<button type="button" class="pill ${CLS[s]}" data-tds="${s}" aria-pressed="${s===r.s}">${s}</button>`).join("")}
+      <button type="button" class="btn primary" data-tdok="${r.id}" style="min-height:40px">保存</button><button type="button" class="btn" data-tdno="1" style="min-height:40px">取消</button>
+      ${r.n?`<span class="note">${esc(r.n)}</span>`:""}</div></td></tr>`;
+    return tr}).join("");
+  box.innerHTML=`<div class="td-h"><span>${esc(title)} · ${rs.length} 行 · ${fmt0(tq)} 支</span><button type="button" data-tdclose="1">收起 ▲</button></div>
+    <div class="td-w">${rs.length?`<table><thead><tr><th>#</th><th style="text-align:left">型号</th><th>长度</th><th>支重</th><th>支数</th><th>重量kg</th>${tdOpen==="*"?"<th>状态</th>":""}</tr></thead><tbody>${body}</tbody></table>`:`<div class="empty" style="padding:14px">这一类今天没有记录。</div>`}</div>`;
+  const q=$("tdQ");if(q){q.focus({preventScroll:true});q.select()}
+}
+$("totals").addEventListener("click",e=>{const c=e.target.closest("[data-td]");if(!c)return;const k=c.dataset.td;tdOpen=tdOpen===k?null:k;tdEdit=null;renderTotals();
+  if(tdOpen){const b=$("tdrop");if(b)b.scrollIntoView({block:"nearest",behavior:"smooth"})}});
+document.addEventListener("click",async e=>{
+  const box=$("tdrop");if(!box||!box.contains(e.target))return;
+  if(e.target.closest("[data-tdclose]")){tdOpen=null;tdEdit=null;renderTotals();return}
+  if(e.target.closest("[data-tdno]")){tdEdit=null;renderDrop();return}
+  const sb=e.target.closest("[data-tds]");if(sb){box.querySelectorAll("[data-tds]").forEach(b=>b.setAttribute("aria-pressed",String(b===sb)));return}
+  const ok=e.target.closest("[data-tdok]");
+  if(ok){const id=ok.dataset.tdok,r=records.find(x=>x.id===id);if(!r)return;
+    const v=$("tdQ").value.replace(/[^\d]/g,""),q=v===""?null:parseInt(v,10);
+    const s=(box.querySelector('[data-tds][aria-pressed="true"]')||{}).dataset;const ns=s&&s.tds||r.s;
+    const patch={};if(q!==r.q)patch.q=q;if(ns!==r.s)patch.s=ns;
+    tdEdit=null;if(Object.keys(patch).length){try{await S.update(id,patch);await loadDay();say("已修改。")}catch(err){say("保存失败，请再试一次。",true)}}else renderDrop();return}
+  const tr=e.target.closest("tr[data-tr]");if(tr){const r=records.find(x=>x.id===tr.dataset.tr);if(r&&r.s===SHIP){say("已出货的行请在出货 App 里处理。");return}tdEdit=tdEdit===tr.dataset.tr?null:tr.dataset.tr;renderDrop()}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target&&e.target.id==="tdQ"){e.preventDefault();const b=document.querySelector("[data-tdok]");if(b)b.click()}});
+let selMode=false,sel=new Set(),selArm=false;
+let view="table",editQ=null,editS=null;
+try{const v=localStorage.getItem("wc_view");if(v==="card"||v==="table")view=v}catch(e){}
+function paintVT(){for(const b of $("vt").children)b.setAttribute("aria-pressed",String(b.dataset.v===view))}
+$("vt").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;view=b.dataset.v;editQ=editS=null;try{localStorage.setItem("wc_view",view)}catch(err){}paintVT();renderList()});
+function renderTable(v){
+  paintVT();
+  const wrap=$("list").querySelector(".tblwrap"),st=wrap?wrap.scrollTop:0,sl=wrap?wrap.scrollLeft:0;
+  let tq=0,tkg=0,tn=0;
+  const rows=v.map((r,i)=>{const c=CLS[r.s]||"nw",pend=r.q==null,kg=r.q>0?r.w/6*r.L*r.q:0;if(r.q>0){tq+=r.q;tkg+=kg;tn++}
+    const flag=(r.n||"").startsWith("【需核对】");
+    const qcell=editQ===r.id?`<td class="c-q editing" data-q="${r.id}"><input id="cellQ" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" value="${r.q!=null?r.q:""}" autocomplete="off"><button type="button" class="nx" data-nx="${r.id}" aria-label="保存并到下一行">↓</button></td>`
+      :r.s===SHIP?`<td class="c-q" title="已出货，由出货App管理">${fmt0(r.q)}</td>`:`<td class="c-q" data-q="${r.id}">${pend?`<span class="pend">待填${r.pq!=null?" · 上次"+fmt0(r.pq):""}</span>`:fmt0(r.q)}</td>`;
+    const scell=editS===r.id?`<td class="c-s" data-s="${r.id}"><span class="opts">${ST.map(x=>`<button type="button" class="pill ${CLS[x]}" data-ss="${x}" data-sid="${r.id}">${x}</button>`).join("")}</span></td>`
+      :r.s===SHIP?`<td class="c-s" title="已出货，要撤销请在出货App里点“撤销提货”"><span class="pill ${c}">${esc(r.s)}</span></td>`:`<td class="c-s" data-s="${r.id}"><span class="pill ${c}">${esc(r.s)}</span></td>`;
+    return `<tr class="${c}${sel.has(r.id)?" picked":""}${qkId===r.id?" cur":""}" data-id="${r.id}">${selMode?`<td class="c-chk"><span class="chk${sel.has(r.id)?" on":""}" data-pick="${r.id}" role="checkbox" aria-checked="${sel.has(r.id)}" tabindex="0" style="margin:auto">${sel.has(r.id)?"✓":""}</span></td>`:""}<td class="c-idx">${i+1}</td><td class="c-m tl" data-edit="${r.id}">${esc(r.m)}</td><td class="c-L">${r.L}</td><td class="c-w">${r.w}</td><td>${(r.w/6*r.L).toFixed(4)}</td>${qcell}<td>${r.q>0?fmt1(kg):""}</td>${scell}<td class="c-n${flag?" flag":""}" title="${esc(r.n||"")}">${esc(r.n||"")}</td></tr>`}).join("");
+  $("list").innerHTML=`<div class="tblwrap"><table class="grid${selMode?" sm":""}"><thead><tr>${selMode?'<th class="c-chk"></th>':""}<th class="c-idx">序号</th><th class="c-m tl">型号</th><th>长度(米)</th><th>理论支重</th><th>实际支重</th><th>支数</th><th>重量(kg)</th><th>状态</th><th class="tl">备注</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr>${selMode?'<td class="c-chk"></td>':""}<td class="c-idx"></td><td class="c-m tl">合计 ${tn} 行</td><td></td><td></td><td></td><td>${fmt0(tq)}</td><td>${fmt1(tkg)}</td><td></td><td></td></tr></tfoot></table></div>`;
+  const w2=$("list").querySelector(".tblwrap");w2.scrollTop=st;w2.scrollLeft=sl;
+  const inp=$("cellQ");if(inp){inp.focus({preventScroll:true});inp.select();const td=inp.closest("td");td.scrollIntoView({block:"nearest",inline:"nearest"})}
+}
+let savingQ=false;
+["mousedown","touchstart"].forEach(ev=>document.addEventListener(ev,e=>{const nx=e.target.closest&&e.target.closest("[data-nx]");if(!nx)return;e.preventDefault();saveCellQ(true)},{passive:false}));
+async function saveCellQ(moveNext){
+  if(savingQ)return;const inp=$("cellQ");if(!inp||!editQ)return;savingQ=true;
+  const id=editQ,raw=String(inp.value).replace(/[^\d]/g,""),q=parseInt(raw,10);
+  const v=visible(),i=v.findIndex(r=>r.id===id),nx=moveNext&&i>=0&&i<v.length-1?v[i+1].id:null;
+  try{if(q>0)await S.update(id,{q});else if(raw==="")await S.update(id,{q:null})}catch(e){say("保存失败，请再试一次。",true)}
+  editQ=nx;savingQ=false;await _loadDay();
+}
+document.addEventListener("focusout",e=>{if(e.target&&e.target.id==="cellQ"){setTimeout(()=>{if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest(".nx"))return;if($("cellQ")&&document.activeElement!==$("cellQ"))saveCellQ(false)},0)}});
+document.addEventListener("keydown",e=>{if(e.target&&e.target.id==="cellQ"){if(e.key==="Enter"||e.key==="ArrowDown"||e.key==="Tab"){e.preventDefault();saveCellQ(true)}else if(e.key==="Escape"){editQ=null;renderList()}}});
+function renderSel(){
+  const bar=$("selbar");$("selBtn").textContent=selMode?"完成":"多选";$("selBtn").classList.toggle("primary",selMode);
+  if(!selMode){bar.hidden=true;return}
+  bar.hidden=false;const n=sel.size,vis=visible().length;
+  bar.innerHTML=selArm?`<span>确定删除选中的 <b>${n}</b> 行？删除后不能恢复。</span><button type="button" class="btn danger" data-sa="delYes">删除</button><button type="button" class="btn" data-sa="delNo">取消</button>`
+   :`<span>已选 <b>${n}</b> 行</span>
+     <button type="button" class="btn" data-sa="all">${vis&&visible().every(r=>sel.has(r.id))?"取消全选":"全选"}（${vis}）</button>
+     <button type="button" class="btn danger" data-sa="del"${n?"":" disabled"}>删除</button>
+     <button type="button" class="btn" data-sa="s:已入库"${n?"":" disabled"}>改为已入库</button>
+     <button type="button" class="btn" data-sa="s:包装中"${n?"":" disabled"}>改为包装中</button>
+     <button type="button" class="btn" data-sa="s:刚生产"${n?"":" disabled"}>改为刚生产</button>`;
+}
+$("selBtn").addEventListener("click",()=>{selMode=!selMode;sel.clear();selArm=false;if(selMode&&qkId)closeQuick();renderList()});
+$("selbar").addEventListener("click",async e=>{const b=e.target.closest("[data-sa]");if(!b)return;const a=b.dataset.sa;
+  if(a==="all"){const v=visible();if(v.every(r=>sel.has(r.id)))v.forEach(r=>sel.delete(r.id));else v.forEach(r=>sel.add(r.id));renderList();return}
+  if(a==="del"){selArm=true;renderSel();return}
+  if(a==="delNo"){selArm=false;renderSel();return}
+  if(a==="delYes"){const ids=[...sel];await S.delMany(ids);sel.clear();selArm=false;await loadDay();say(`已删除 ${ids.length} 行。`);return}
+  if(a.startsWith("s:")){const st=a.slice(2),ids=[...sel];for(const id of ids)await S.update(id,{s:st});await loadDay();say(`已把 ${ids.length} 行改为${st}。`)}
+});
+function renderList(){
+  renderSel();
+  const v=visible();
+  $("listCount").textContent=v.length+" / "+records.length+" 行";
+  const isToday=$("day").value===today();
+  $("listTitle").textContent=isToday?"今天的记录":$("day").value+" 的记录";
+  renderPend();
+  if(!records.length){renderStart();$("bulk").hidden=true;return}
+  if(!v.length){$("list").innerHTML=`<div class="empty">没有符合筛选条件的记录。</div>`}
+  else if(view==="table")renderTable(v);
+  else $("list").innerHTML=v.map(r=>{const kg=r.q>0?r.w/6*r.L*r.q:0,c=CLS[r.s]||"nw",pend=r.q==null;
+    return `<div class="item ${c}${qkId===r.id?" cur":""}${selMode?" selmode":""}${sel.has(r.id)?" picked":""}" data-id="${r.id}">${selMode?`<span class="chk${sel.has(r.id)?" on":""}" data-pick="${r.id}" role="checkbox" aria-checked="${sel.has(r.id)}" tabindex="0">${sel.has(r.id)?"✓":""}</span>`:""}<div class="bar"></div>
+      <div class="main" data-edit="${r.id}" role="button" tabindex="0" aria-label="修改 ${esc(r.m)}">
+        <div class="l1"><span class="mm">${esc(r.m)}</span>${pend?`<span class="q pend">待填${r.pq!=null?" · 上次 "+fmt0(r.pq):""}</span>`:`<span class="q">${fmt0(r.q)} 支</span>`}</div>
+        <div class="l2"><span class="tL">${r.L}米</span> <span class="tW">支重 ${r.w}</span> · 实际 ${(r.w/6*r.L).toFixed(4)}${pend?"":" · "+fmt1(kg)+" kg"}${r.p?" · "+esc(r.p):""}</div>
+        ${r.n?`<div class="note">${esc(r.n)}</div>`:""}
+      </div>
+      <div class="side"><span class="pill ${c}">${esc(r.s)}</span>${r.s!=="已入库"&&r.s!==SHIP?`<button type="button" class="mv" data-in="${r.id}">入库 ✓</button>`:""}</div></div>`}).join("");
+  const movable=v.filter(r=>r.s!=="已入库"&&r.s!==SHIP);
+  if(movable.length>1&&(filter==="包装中"||filter==="刚生产"||search)){
+    $("bulk").hidden=false;
+    $("bulk").innerHTML=bulkArm?`<span>确定把这 ${movable.length} 行都改成已入库？</span><button type="button" class="btn primary" id="bulkYes">确定</button><button type="button" class="btn" id="bulkNo">取消</button>`
+      :`<button type="button" class="btn" id="bulkGo">把筛选出的 ${movable.length} 行全部改为已入库</button>`;
+  }else{$("bulk").hidden=true;bulkArm=false}
+}
+function render(){renderTotals();renderList();update()}
+$("list").addEventListener("click",async e=>{
+  if(view==="table"&&e.target.closest("table.grid")){
+    if(e.target.closest("[data-nx]"))return;
+    if(e.target.id==="cellQ")return;
+    if(selMode){const tr=e.target.closest("tr[data-id]");if(tr){const id=tr.dataset.id;sel.has(id)?sel.delete(id):sel.add(id);renderList()}return}
+    const ss=e.target.closest("[data-ss]");if(ss){const id=ss.dataset.sid;editS=null;await S.update(id,{s:ss.dataset.ss});await _loadDay();return}
+    const sc=e.target.closest("[data-s]");if(sc){editS=editS===sc.dataset.s?null:sc.dataset.s;editQ=null;renderList();return}
+    const qc=e.target.closest("[data-q]");if(qc){if($("cellQ"))await saveCellQ(false);editQ=qc.dataset.q;editS=null;renderList();return}
+    const ed=e.target.closest("[data-edit]");if(ed){const r=records.find(x=>x.id===ed.dataset.edit);if(r){if(qkId)closeQuick();startEdit(r)}}
+    return}
+  const mv=e.target.closest("[data-in]");
+  if(mv){mv.disabled=true;try{await S.update(mv.dataset.in,{s:"已入库"});await loadDay()}catch(err){mv.disabled=false;say("改状态失败，请再点一次。",true)}return}
+  if(selMode){const it=e.target.closest(".item");if(it&&!e.target.closest("[data-in]")){const id=it.dataset.id;sel.has(id)?sel.delete(id):sel.add(id);renderList()}return}
+  const ed=e.target.closest("[data-edit]");if(ed){const r=records.find(x=>x.id===ed.dataset.edit);if(r){if(qkId||r.q==null)openQuick(r.id);else startEdit(r)}}
+});
+$("list").addEventListener("keydown",e=>{if(selMode&&(e.key===" "||e.key==="Enter")){const p=e.target.closest("[data-pick]");if(p){p.click();e.preventDefault();return}}if(e.key==="Enter"){const ed=e.target.closest("[data-edit]");if(ed)ed.click()}});
+$("bulk").addEventListener("click",async e=>{
+  if(e.target.id==="bulkGo"){bulkArm=true;renderList();return}
+  if(e.target.id==="bulkNo"){bulkArm=false;renderList();return}
+  if(e.target.id==="bulkYes"){const ids=visible().filter(r=>r.s!=="已入库"&&r.s!==SHIP).map(r=>r.id);bulkArm=false;
+    let fail=0;for(const id of ids){try{await S.update(id,{s:"已入库"})}catch(err){fail++}}await loadDay();
+    say(fail?`有 ${fail} 行没改成功，请再试一次。`:`已把 ${ids.length} 行改为已入库`,!!fail)}
+});
+$("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;filter=b.dataset.f;bulkArm=false;for(const x of $("tabs").children)x.setAttribute("aria-pressed",String(x===b));renderList()});
+$("q").addEventListener("input",()=>{search=$("q").value;bulkArm=false;renderList()});
+
+/* ---------- data (IndexedDB on this device) ---------- */
+const LocalS=(()=>{
+  let dbp=null;
+  const open=()=>dbp||(dbp=new Promise((ok,bad)=>{const r=indexedDB.open("chejian-pandian",1);
+    r.onupgradeneeded=()=>{const d=r.result;const st=d.createObjectStore("records",{keyPath:"id"});st.createIndex("d","d");d.createObjectStore("kv")};
+    r.onsuccess=()=>ok(r.result);r.onerror=()=>bad(r.error)}));
+  const tx=async(store,mode,fn)=>{const d=await open();return new Promise((ok,bad)=>{const t=d.transaction(store,mode);const st=t.objectStore(store);let out;const r=fn(st);if(r)r.onsuccess=()=>{out=r.result};t.oncomplete=()=>ok(out);t.onerror=()=>bad(t.error);t.onabort=()=>bad(t.error)})};
+  const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  return{
+    byDay:d=>tx("records","readonly",st=>st.index("d").getAll(d)),
+    all:()=>tx("records","readonly",st=>st.getAll()),
+    add:rec=>tx("records","readwrite",st=>st.put(Object.assign({id:uid()},rec))),
+    put:rec=>tx("records","readwrite",st=>st.put(rec)),
+    addMany:recs=>tx("records","readwrite",st=>{recs.forEach(r=>st.put(Object.assign({id:uid()},r)))}),
+    delMany:ids=>tx("records","readwrite",st=>{ids.forEach(id=>st.delete(id))}),
+    update:async(id,patch)=>{const d=await open();return new Promise((ok,bad)=>{const t=d.transaction("records","readwrite"),st=t.objectStore("records"),g=st.get(id);g.onsuccess=()=>{if(g.result)st.put(Object.assign(g.result,patch))};t.oncomplete=()=>ok();t.onerror=()=>bad(t.error)})},
+    del:id=>tx("records","readwrite",st=>st.delete(id)),
+    getCat:()=>tx("kv","readonly",st=>st.get("catalog")),
+    setCat:items=>tx("kv","readwrite",st=>st.put(items,"catalog")),
+  };
+})();
+/* cloud-backed store, same calls as before */
+const S=(()=>{
+  const R=Cloud.store("pandian_records"),KV=Cloud.kv("pandian_kv");
+  const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  return{
+    byDay:d=>R.byDay(d),all:()=>R.allOnce(),
+    add:async rec=>{const id=uid();await R.put(Object.assign({id},rec));return id},
+    put:rec=>R.put(rec),
+    addMany:recs=>R.putMany(recs.map(r=>Object.assign({id:uid()+Math.random().toString(36).slice(2,5)},r))),
+    putMany:recs=>R.putMany(recs),
+    delMany:ids=>R.delMany(ids),update:(id,p)=>R.update(id,p),del:id=>R.del(id),
+    getCat:()=>KV.get("catalog"),setCat:items=>KV.set("catalog",items),
+    lastDayBefore:d=>R.lastDayBefore(d),dayOnce:d=>R.query("d","==",d),
+  };
+})();
+async function loadDay(){
+  try{const rs=await S.byDay($("day").value);records=rs.sort((a,b)=>(a.t||0)-(b.t||0));render()}
+  catch(e){setSync("bad","读取失败");$("list").innerHTML=`<div class="empty">读取记录失败，请关掉 App 重新打开。</div>`}
+}
+$("day").addEventListener("change",()=>{resetForm();closeQuick();loadDay()});
+window.WC={S,cat:()=>catalog,setCat:c=>{catalog=c},day:()=>$("day").value,recs:()=>records,say,reload:()=>(typeof _loadDay==="function"?_loadDay():loadDay())};
+let remoteT=null;
+Cloud.onRemote=()=>{clearTimeout(remoteT);remoteT=setTimeout(()=>{if(document.getElementById("cellQ")||(document.activeElement&&document.activeElement.closest&&document.activeElement.closest("#form")))return;_loadDay?_loadDay():loadDay()},300)};
+(async()=>{
+  try{await Cloud.ready}catch(e){}
+  $("who").textContent="当前账号："+(Cloud.email()||"");
+  try{
+    let c=await S.getCat();
+    if(!Array.isArray(c)){c=(window.BASE_CATALOG||[]).slice();await S.setCat(c)}
+    catalog=c;
+  }catch(e){catalog=(window.BASE_CATALOG||[]).slice();$("banner").hidden=false;$("banner").textContent="这台设备不能保存数据（可能开了无痕浏览）。请用普通模式打开。"}
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  loadDay();
+  try{const old=await LocalS.all();let done=false;try{done=localStorage.getItem("wc_migrated")==="1"}catch(e){}
+    if(old.length&&!done){$("migBox").hidden=false;$("migBtn").textContent=`把这台设备上的旧数据（${old.length} 条）上传到云端`}}catch(e){}
+})();
+$("logoutBtn").addEventListener("click",()=>Cloud.signOut());
+$("migBtn").addEventListener("click",async()=>{
+  const b=$("migBtn");b.disabled=true;b.textContent="正在上传…";
+  try{const old=await LocalS.all();await S.putMany(old.filter(r=>r&&r.id&&r.d&&r.m));
+    const oc=await LocalS.getCat();if(Array.isArray(oc)){const have=new Set(catalog.map(x=>x.m+"|"+x.L+"|"+x.w));oc.forEach(x=>{if(x&&x.m&&!have.has(x.m+"|"+x.L+"|"+x.w)){catalog.push(x);have.add(x.m+"|"+x.L+"|"+x.w)}});await S.setCat(catalog)}
+    try{localStorage.setItem("wc_migrated","1")}catch(e){}
+    $("migBox").hidden=true;say(`已把 ${old.length} 条旧记录上传到云端。其他设备登录后就能看到。`);loadDay()}
+  catch(e){b.disabled=false;b.textContent="上传失败，点这里再试一次"}
+});
+if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(()=>{})})}
+
+/* ---------- share / save a file ---------- */
+async function shareFile(blob,name){
+  const file=new File([blob],name,{type:blob.type||"application/octet-stream"});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:name});return "shared"}catch(e){if(e&&e.name==="AbortError")return "cancel"}
+  }
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);return "saved";
+}
+
+/* ---------- checklist: start the day from a template ---------- */
+let lastDayInfo=null, pendArm=false;
+async function findLastDay(){
+  try{let cur=$("day").value;
+    for(let k=0;k<5;k++){const d=await S.lastDayBefore(cur);if(!d)return null;
+      const rows=(await S.dayOnce(d)).filter(r=>r.q>0&&r.s!==SHIP);if(rows.length)return{d,rows:rows.sort((a,b)=>(a.t||0)-(b.t||0))};cur=d}
+    return null}catch(e){return null}
+}
+function renderStart(){
+  const base=new Set((window.BASE_TEMPLATE||[]).map(r=>r.m+"|"+r.L+"|"+r.w+"|"+r.s)).size;
+  const last=lastDayInfo;
+  $("list").innerHTML=`<div class="startbox">
+    <div>这一天还没有记录。先把要盘的型号一次排好，再用数字键盘逐个填支数：</div>
+    ${last?`<button type="button" class="btn primary" id="tplLast">按 ${esc(last.d)} 的型号排好（${last.rows.length} 个，带上次支数）</button>`:""}
+    ${base?`<button type="button" class="btn${last?"":" primary"}" id="tplBase">按标准清单排好（${base} 个型号）</button>`:""}
+    <div class="sub">同一型号有好几捆的，加起来填一个总数。清单里没有的型号，在左边新录。</div></div>`;
+}
+async function buildDay(rows){
+  const day=$("day").value,t0=Date.now();
+  const seen=new Set(records.map(r=>r.m+"|"+r.L+"|"+r.w+"|"+r.s)),list=[];
+  rows.forEach(r=>{if(r.s===SHIP)return;const k=r.m+"|"+r.L+"|"+r.w+"|"+r.s;if(seen.has(k))return;seen.add(k);list.push(r)});
+  await S.addMany(list.map((r,i)=>({d:day,m:r.m,L:r.L,w:r.w,s:r.s||"已入库",q:null,pq:(r.q>0?r.q:null),n:"",p:"",t:t0+i})));
+  await loadDay();say(list.length?`已排好 ${list.length} 个型号，开始逐个填支数。`:"清单里的型号今天都已经有了。");if(list.length)openQuick();
+}
+$("list").addEventListener("click",async e=>{
+  if(e.target.id==="tplLast"&&lastDayInfo){e.target.disabled=true;await buildDay(lastDayInfo.rows)}
+  if(e.target.id==="tplBase"){e.target.disabled=true;await buildDay(window.BASE_TEMPLATE||[])}
+});
+function renderPend(){
+  const n=records.filter(r=>r.q==null).length,box=$("pend");
+  if(!records.length){box.hidden=true;return}
+  if(!n){box.hidden=false;pendArm=false;
+    box.innerHTML=`${lastDayInfo?`<button type="button" class="btn" id="tplLast2">按 ${esc(lastDayInfo.d)} 的型号补齐</button>`:""}<button type="button" class="btn" id="tplBase2">按标准清单补齐型号，快速填数</button>`;return}
+  box.hidden=false;
+  box.innerHTML=pendArm?`<span>确定删除 ${n} 个还没填支数的型号？</span><button type="button" class="btn danger" id="pendYes">删除</button><button type="button" class="btn" id="pendNo">取消</button>`
+    :`<button type="button" class="btn primary" id="pendGo">快速填数（还剩 ${n} 个）</button><button type="button" class="btn" id="pendDel">删除未填的 ${n} 个</button>`;
+}
+$("pend").addEventListener("click",async e=>{
+  if(e.target.id==="pendGo")openQuick();
+  if(e.target.id==="tplLast2"&&lastDayInfo){e.target.disabled=true;await buildDay(lastDayInfo.rows)}
+  if(e.target.id==="tplBase2"){e.target.disabled=true;await buildDay(window.BASE_TEMPLATE||[])}
+  if(e.target.id==="pendDel"){pendArm=true;renderPend()}
+  if(e.target.id==="pendNo"){pendArm=false;renderPend()}
+  if(e.target.id==="pendYes"){pendArm=false;await S.delMany(records.filter(r=>r.q==null).map(r=>r.id));closeQuick();await loadDay();say("已删除未填的型号。")}
+});
+const _loadDay=loadDay;
+let lastDayFor=null;
+loadDay=async function(){const d=$("day").value;if(lastDayFor!==d){lastDayFor=d;lastDayInfo=await findLastDay()}await _loadDay()};
+
+/* ---------- quick fill with big keypad ---------- */
+$("quickTop").addEventListener("click",async()=>{
+  const b=$("quickTop");
+  if(records.some(r=>r.q==null)){openQuick();return}
+  b.disabled=true;
+  try{await buildDay(lastDayInfo?lastDayInfo.rows:(window.BASE_TEMPLATE||[]))}finally{b.disabled=false}
+  $("quick").scrollIntoView({block:"start",behavior:"smooth"});
+});
+let qkId=null,qkVal="",qkS="已入库";
+function qkMsg(t,err){$("qkMsg").textContent=t||"";$("qkMsg").className="msg"+(err?" err":"")}
+function openQuick(id){
+  let r=id?records.find(x=>x.id===id):records.find(x=>x.q==null);
+  if(!r){say("所有型号都填好了。");closeQuick();return}
+  qkId=r.id;qkVal=r.q!=null?String(r.q):"";qkS=r.s||"已入库";
+  $("quick").hidden=false;$("form").hidden=true;paintQuick();renderList();
+  if(window.matchMedia("(max-width:900px)").matches)$("quick").scrollIntoView({block:"start",behavior:"smooth"});
+}
+function closeQuick(){qkId=null;$("quick").hidden=true;$("form").hidden=false;if(records)renderList()}
+function paintQuick(){
+  const i=records.findIndex(x=>x.id===qkId);if(i<0){closeQuick();return}
+  const r=records[i],left=records.filter(x=>x.q==null).length;
+  $("qkPos").textContent=`第 ${i+1} / ${records.length} 个 · 还剩 ${left} 个未填`;
+  $("qkModel").textContent=r.m;
+  $("qkSpec").innerHTML=`<span class="tL">${r.L}米</span><span class="tW">支重 ${r.w}</span><div>实际 ${(r.w/6*r.L).toFixed(4)} kg/支</div>`;
+  $("qkPrev").textContent=r.pq!=null?`上次：${fmt0(r.pq)} 支`:"";
+  const v=$("qkVal");v.textContent=qkVal?Number(qkVal).toLocaleString("zh-CN"):"支数";v.classList.toggle("empty",!qkVal);
+  for(const b of $("qkSeg").children)b.setAttribute("aria-pressed",String(b.dataset.s===qkS));
+  const row=document.querySelector(`.item[data-id="${qkId}"]`);if(row)row.scrollIntoView({block:"nearest"});
+}
+$("qkSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;qkS=b.dataset.s;paintQuick()});
+$("pad").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const k=b.dataset.k;
+  if(k==="clr")qkVal="";else if(k==="del")qkVal=qkVal.slice(0,-1);else if(qkVal.length<6)qkVal=(qkVal==="0"?"":qkVal)+k;
+  qkMsg("");paintQuick()});
+function nextId(fromId,needEmpty){const i=records.findIndex(x=>x.id===fromId);
+  for(let j=i+1;j<records.length;j++)if(!needEmpty||records[j].q==null)return records[j].id;
+  if(needEmpty)for(let j=0;j<i;j++)if(records[j].q==null)return records[j].id;return null}
+$("qkOk").addEventListener("click",async()=>{
+  const q=parseInt(qkVal,10);
+  if(!(q>0)){qkMsg("请先输入支数；没有货就点“跳过”。",true);return}
+  const id=qkId;
+  try{await S.update(id,{q,s:qkS});await _loadDay()}catch(e){qkMsg("保存失败，请再点一次。",true);return}
+  const nx=nextId(id,true);
+  if(nx){qkId=nx;const r=records.find(x=>x.id===nx);qkVal="";qkS=r.s||"已入库";qkMsg(`已保存上一个：${fmt0(q)} 支`);paintQuick();renderList()}
+  else{closeQuick();say("全部填完了，可以导出 Excel。")}
+});
+$("qkSkip").addEventListener("click",()=>{const nx=nextId(qkId,false);if(!nx){qkMsg("已经是最后一个了。");return}openQuick(nx);qkMsg("")});
+$("qkPrevBtn").addEventListener("click",()=>{const i=records.findIndex(x=>x.id===qkId);if(i>0){openQuick(records[i-1].id);qkMsg("")}});
+$("qkExit").addEventListener("click",closeQuick);
+function qkSearch(){
+  const k=norm($("qkQ").value),box=$("qkRes");
+  if(!k){box.hidden=true;box.innerHTML="";return}
+  const score=m=>{const n=norm(m);return n===k?0:n.startsWith(k)?1:2};
+  const mine=records.filter(r=>norm(r.m).includes(k)).sort((a,b)=>score(a.m)-score(b.m)).slice(0,8);
+  const have=new Set(records.map(r=>r.m+"|"+r.L+"|"+r.w));
+  const more=catalog.filter(c=>norm(c.m).includes(k)&&!have.has(c.m+"|"+c.L+"|"+c.w)).sort((a,b)=>score(a.m)-score(b.m)||a.m.localeCompare(b.m)).slice(0,8);
+  const tag=(L,w)=>`<span class="tL">${L}米</span> <span class="tW">${w}</span>`;
+  let h=mine.map(r=>`<button type="button" data-go="${r.id}"><span><span class="m">${esc(r.m)}</span> ${tag(r.L,r.w)}</span><span class="st">${r.q==null?"待填":fmt0(r.q)+" 支"} · ${esc(r.s)}</span></button>`).join("");
+  h+=more.map((c,i)=>`<button type="button" data-addm="${esc(c.m)}" data-l="${c.L}" data-w="${c.w}"><span><span class="m">${esc(c.m)}</span> ${tag(c.L,c.w)}</span><span class="st add">＋ 加入今天</span></button>`).join("");
+  if(!h)h=`<div class="empty" style="padding:12px">没找到“${esc(clean($("qkQ").value))}”。退出快速填数后，可以在新录表单里加新型号。</div>`;
+  box.hidden=false;box.innerHTML=h;
+}
+$("qkQ").addEventListener("input",qkSearch);
+$("qkRes").addEventListener("click",async e=>{
+  const go=e.target.closest("[data-go]");
+  if(go){$("qkQ").value="";qkSearch();$("qkQ").blur();openQuick(go.dataset.go);return}
+  const ad=e.target.closest("[data-addm]");
+  if(ad){ad.disabled=true;
+    const id=await S.add({d:$("day").value,m:ad.dataset.addm,L:parseFloat(ad.dataset.l),w:parseFloat(ad.dataset.w),s:qkS||"已入库",q:null,pq:null,n:"",p:"",t:Date.now()});
+    await _loadDay();$("qkQ").value="";qkSearch();$("qkQ").blur();openQuick(id);qkMsg("已加入今天的清单，请填支数。")}
+});
+document.addEventListener("keydown",e=>{if($("quick").hidden||e.target.id==="qkQ"||e.target.tagName==="INPUT")return;
+  if(/^[0-9]$/.test(e.key)){if(qkVal.length<6)qkVal=(qkVal==="0"?"":qkVal)+e.key;paintQuick();e.preventDefault()}
+  else if(e.key==="Backspace"){qkVal=qkVal.slice(0,-1);paintQuick();e.preventDefault()}
+  else if(e.key==="Enter"){$("qkOk").click();e.preventDefault()}});
+
+/* ---------- backup / restore ---------- */
+$("backupBtn").addEventListener("click",async()=>{
+  try{const all=await S.all();const blob=new Blob([JSON.stringify({app:"chejian-pandian",v:1,at:new Date().toISOString(),catalog,records:all})],{type:"application/json"});
+    const t=today().replace(/-/g,"");const r=await shareFile(blob,`车间盘点备份_${t}.json`);
+    say(r==="cancel"?"已取消备份。":`已生成备份（${all.length} 条记录）。请存到“文件”或发给自己。`)}
+  catch(e){say("备份失败，请再试一次。",true)}
+});
+$("restoreBtn").addEventListener("click",()=>$("restoreFile").click());
+$("restoreFile").addEventListener("change",async e=>{
+  const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+  try{const data=JSON.parse(await f.text());if(!data||!Array.isArray(data.records))throw 0;
+    const ok=data.records.filter(r=>r&&r.id&&r.d&&r.m);await S.putMany(ok);const n=ok.length;
+    if(Array.isArray(data.catalog)){const have=new Set(catalog.map(x=>x.m+"|"+x.L+"|"+x.w));data.catalog.forEach(x=>{if(x&&x.m&&!have.has(x.m+"|"+x.L+"|"+x.w))catalog.push(x)});await S.setCat(catalog)}
+    say(`已恢复 ${n} 条记录。`);loadDay()}
+  catch(err){say("这个文件不是车间盘点的备份，没有恢复。",true)}
+});
+
+/* ---------- catalog manager ---------- */
+let catDelArm=null;
+function renderCat(){
+  const k=norm($("catQ").value);
+  const list=catalog.map((c,i)=>({c,i})).filter(x=>!k||norm(x.c.m).includes(k)).sort((a,b)=>a.c.m<b.c.m?-1:a.c.m>b.c.m?1:a.c.L-b.c.L||a.c.w-b.c.w);
+  $("catCount").textContent=catalog.length+" 个";
+  $("catList").innerHTML=list.slice(0,200).map(({c,i})=>`<div class="catrow"><span class="data"><b>${esc(c.m)}</b> <span class="tL">${c.L}米</span> <span class="tW">${c.w}</span></span><button type="button" class="btn${catDelArm===i?" danger":""}" data-ci="${i}">${catDelArm===i?"确认删除":"删除"}</button></div>`).join("")+(list.length>200?`<div class="sub" style="padding:8px 0">还有 ${list.length-200} 个，请输入型号搜索。</div>`:"");
+}
+$("catBtn").addEventListener("click",()=>{catDelArm=null;$("catQ").value="";renderCat();$("catDlg").showModal()});
+$("catClose").addEventListener("click",()=>$("catDlg").close());
+$("catQ").addEventListener("input",()=>{catDelArm=null;renderCat()});
+$("catList").addEventListener("click",async e=>{const b=e.target.closest("[data-ci]");if(!b)return;const i=+b.dataset.ci;
+  if(catDelArm!==i){catDelArm=i;renderCat();return}
+  catalog.splice(i,1);catDelArm=null;await S.setCat(catalog);renderCat();update()});
+
+/* ---------- export ---------- */
+function loadExcelJS(){return new Promise((ok,bad)=>{if(window.ExcelJS)return ok(window.ExcelJS);const s=document.createElement("script");s.src="./exceljs.min.js";s.onload=()=>ok(window.ExcelJS);s.onerror=()=>bad(new Error("load"));document.head.appendChild(s)})}
+$("exportBtn").addEventListener("click",async()=>{
+  const btn=$("exportBtn");
+  const done=records.filter(r=>r.q>0);
+  if(!done.length){say("这一天还没有填了支数的记录，没有可导出的内容。",true);return}
+  btn.disabled=true;btn.textContent="正在生成…";
+  try{
+    const XL=await loadExcelJS();
+    const buf=await buildWorkbook(XL,done,$("day").value);
+    const d=$("day").value.split("-");
+    const r=await shareFile(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),`铝型材清单_${d[1]}${d[2]}.xlsx`);
+    say(r==="cancel"?"已取消导出。":"Excel 已生成，可以存到“文件”、发微信或用 WPS 打开。");
+  }catch(err){
+    if(err&&err.message==="load")say("表格组件没有加载成功，请联网打开一次 App 后再试。",true);
+    else say("导出失败，请再试一次。",true);
+  }finally{btn.disabled=false;btn.textContent="导出 Excel"}
+});
+
+async function buildWorkbook(XL,recs,day){
+  const wb=new XL.Workbook();
+  const F={name:"Arial",size:10}, FB={name:"Arial",size:10,bold:true}, FH={name:"Arial",size:10,bold:true,color:{argb:"FFFFFFFF"}};
+  const fill=c=>({type:"pattern",pattern:"solid",fgColor:{argb:"FF"+c}});
+  const SC={"已入库":"E2EFDA","包装中":"DDEBF7","刚生产":"FCE4D6","已出货":"D9D9D9"};
+  const EX=ST.concat(recs.some(r=>r.s===SHIP)?[SHIP]:[]),NS=EX.length,CL=i=>String.fromCharCode(65+i);
+  const thin={style:"thin",color:{argb:"FFBFBFBF"}}, BD={top:thin,left:thin,bottom:thin,right:thin};
+  const head=(ws,cols)=>{const r=ws.addRow(cols);r.height=30;r.eachCell(c=>{c.font=FH;c.fill=fill("305496");c.border=BD;c.alignment={horizontal:"center",vertical:"middle",wrapText:true}})};
+  // order: by original page then entry time
+  const pageNo=r=>{const m=/第(\d+)张/.exec(r.p||"");return m?+m[1]:999};
+  recs.sort((a,b)=>pageNo(a)-pageNo(b)||(a.t||0)-(b.t||0));
+  const n=recs.length+1;
+
+  const zs=wb.addWorksheet("按状态汇总");
+  const ws=wb.addWorksheet("明细",{views:[{state:"frozen",ySplit:1}]});
+  const ss=wb.addWorksheet("按型号汇总",{views:[{state:"frozen",ySplit:1}]});
+
+  head(ws,["序号","页码","状态","长度(米)","型号","理论支重(kg/6米)","实际支重(kg/支)","数量(支)","总米数","理论重量(kg)","备注"]);
+  recs.forEach((r,i)=>{const k=i+2,piece=r.w/6*r.L;
+    const row=ws.addRow([i+1,r.p||"",r.s,r.L,r.m,r.w,{formula:`F${k}/6*D${k}`,result:piece},r.q,{formula:`D${k}*H${k}`,result:r.L*r.q},{formula:`G${k}*H${k}`,result:piece*r.q},r.n||""]);
+    row.eachCell({includeEmpty:true},(c,col)=>{c.font=F;c.border=BD;if(col<=10)c.alignment={horizontal:"center"}});
+    ws.getCell(`D${k}`).numFmt="0.00";ws.getCell(`F${k}`).numFmt="0.000";ws.getCell(`G${k}`).numFmt="0.0000";
+    ws.getCell(`H${k}`).numFmt="#,##0";ws.getCell(`I${k}`).numFmt="#,##0.0";ws.getCell(`J${k}`).numFmt="#,##0.0";
+    ws.getCell(`C${k}`).dataValidation={type:"list",allowBlank:false,formulae:['"'+EX.join(",")+'"'],showErrorMessage:true,errorTitle:"状态",error:"请从下拉中选择："+EX.join(" / ")};
+    if((r.n||"").startsWith("【需核对】")){const c=ws.getCell(`K${k}`);c.fill=fill("FFFF00");c.font={name:"Arial",size:10,bold:true,color:{argb:"FFC00000"}}}
+  });
+  const sum=(col)=>recs.reduce((a,r)=>a+col(r),0);
+  const t=n+1, tr=ws.getRow(t);
+  tr.getCell(1).value="合计";
+  tr.getCell(8).value={formula:`SUM(H2:H${n})`,result:sum(r=>r.q)};tr.getCell(9).value={formula:`SUM(I2:I${n})`,result:sum(r=>r.L*r.q)};tr.getCell(10).value={formula:`SUM(J2:J${n})`,result:sum(r=>r.w/6*r.L*r.q)};
+  for(let c=1;c<=11;c++){const x=tr.getCell(c);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}
+  tr.getCell(8).numFmt="#,##0";tr.getCell(9).numFmt="#,##0.0";tr.getCell(10).numFmt="#,##0.0";
+  EX.forEach(s=>ws.addConditionalFormatting({ref:`A2:J${n}`,rules:[{type:"expression",formulae:[`$C2="${s}"`],style:{fill:{type:"pattern",pattern:"solid",bgColor:{argb:"FF"+SC[s]}}}}]}));
+  const notes=["颜色说明（改“状态”列下拉，颜色和汇总会自动跟着变）：","绿色 = 已入库","蓝色 = 包装中","橙色 = 刚生产",...(NS>3?["灰色 = 已出货（出货App确认提货后自动转入）"]:[]),"备注栏黄底红字 = 需核对","实际支重=理论支重÷6×实际长度；理论重量=实际支重×支数（照片上的支重为6米理论支重）。"];
+  notes.forEach((x,i)=>{const c=ws.getCell(`C${t+2+i}`);c.value=x;c.font=i===0?FB:F;if(i>=1&&i<=NS)ws.getCell(`B${t+2+i}`).fill=fill(SC[EX[i-1]]);if(i===NS+1)ws.getCell(`B${t+2+i}`).fill=fill("FFFF00")});
+  [6,8,9,9,14,12,12,10,11,13,52].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  ws.autoFilter=`A1:K${n}`;
+
+  // summary by model
+  head(ss,["型号","长度(米)","理论支重(kg/6米)","实际支重(kg/支)",...EX.map(s=>s+"(支)"),"数量合计(支)","理论重量合计(kg)"]);
+  const cT=CL(4+NS),cW=CL(5+NS),cLast=CL(3+NS);
+  const keys=[...new Map(recs.map(r=>[r.m+"|"+r.L+"|"+r.w,{m:r.m,L:r.L,w:r.w}])).values()].sort((a,b)=>a.m<b.m?-1:a.m>b.m?1:a.L-b.L||a.w-b.w);
+  const R=c=>`明细!$${c}$2:$${c}$${n}`;
+  keys.forEach((g,i)=>{const k=i+2,crit=`${R("E")},A${k},${R("D")},B${k},${R("F")},C${k}`;
+    const mine=recs.filter(r=>r.m===g.m&&r.L===g.L&&r.w===g.w);const q=s=>mine.filter(r=>r.s===s).reduce((a,r)=>a+r.q,0);
+    const row=ss.addRow([g.m,g.L,g.w,{formula:`C${k}/6*B${k}`,result:g.w/6*g.L},
+      ...EX.map(s=>({formula:`SUMIFS(${R("H")},${crit},${R("C")},"${s}")`,result:q(s)})),
+      {formula:`SUM(E${k}:${cLast}${k})`,result:mine.reduce((a,r)=>a+r.q,0)},{formula:`SUMIFS(${R("J")},${crit})`,result:mine.reduce((a,r)=>a+r.w/6*r.L*r.q,0)}]);
+    row.eachCell((c,col)=>{c.font=F;c.border=BD;if(col>1)c.alignment={horizontal:"center"}});
+    ss.getCell(`B${k}`).numFmt="0.00";ss.getCell(`C${k}`).numFmt="0.000";ss.getCell(`D${k}`).numFmt="0.0000";
+    for(let j=0;j<=NS;j++)ss.getCell(`${CL(4+j)}${k}`).numFmt="#,##0";ss.getCell(`${cW}${k}`).numFmt="#,##0.0";
+    EX.forEach((s,j)=>ss.getCell(`${CL(4+j)}${k}`).fill=fill(SC[s]));
+  });
+  const e=keys.length+1, sr=ss.getRow(e+1);sr.getCell(1).value="合计";
+  const tot=[...EX.map(s=>sum(r=>r.s===s?r.q:0)),sum(r=>r.q),sum(r=>r.w/6*r.L*r.q)];
+  tot.forEach((v,j)=>{const c=CL(4+j),x=ss.getCell(`${c}${e+1}`);x.value={formula:`SUM(${c}2:${c}${e})`,result:v};x.numFmt=c===cW?"#,##0.0":"#,##0"});
+  for(let c=1;c<=6+NS;c++){const x=sr.getCell(c);x.font=FB;x.border=BD;x.fill=fill("D9E1F2")}
+  [16,10,14,14,...EX.map(()=>12),14,18].forEach((w,i)=>ss.getColumn(i+1).width=w);
+  ss.autoFilter=`A1:${cW}${e}`;
+
+  // summary by status
+  head(zs,["状态","行数","数量合计(支)","理论重量合计(kg)"]);
+  EX.forEach((s,i)=>{const k=i+2,mine=recs.filter(r=>r.s===s);
+    const row=zs.addRow([s,{formula:`COUNTIF(${R("C")},A${k})`,result:mine.length},{formula:`SUMIFS(${R("H")},${R("C")},A${k})`,result:mine.reduce((a,r)=>a+r.q,0)},{formula:`SUMIFS(${R("J")},${R("C")},A${k})`,result:mine.reduce((a,r)=>a+r.w/6*r.L*r.q,0)}]);
+    row.eachCell(c=>{c.font=F;c.border=BD;c.fill=fill(SC[s]);c.alignment={horizontal:"center"}});zs.getCell(`C${k}`).numFmt="#,##0";zs.getCell(`D${k}`).numFmt="#,##0.0"});
+  const zl=NS+1,zt=NS+2;
+  const zr=zs.addRow(["合计",{formula:`SUM(B2:B${zl})`,result:recs.length},{formula:`SUM(C2:C${zl})`,result:sum(r=>r.q)},{formula:`SUM(D2:D${zl})`,result:sum(r=>r.w/6*r.L*r.q)}]);
+  zr.eachCell(c=>{c.font=FB;c.border=BD;c.fill=fill("D9E1F2");c.alignment={horizontal:"center"}});zs.getCell(`C${zt}`).numFmt="#,##0";zs.getCell(`D${zt}`).numFmt="#,##0.0";
+  zs.getCell(`A${zt+2}`).value=`盘点日期：${day}`;zs.getCell(`A${zt+2}`).font=F;
+  [10,8,14,18].forEach((w,i)=>zs.getColumn(i+1).width=w);
+  return wb.xlsx.writeBuffer();
+}
+})();
+</script>
+<script src="scan.js"></script>
+<script src="qdx.js"></script>
+<script src="qd.js"></script>
+</body>
+</html>
