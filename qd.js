@@ -37,7 +37,7 @@
     render();
   }
   let tab = LS.get("qd_tab", "list"), sub = LS.get("qd_sub", "photo"), cmpF = "all", ckF = "all";
-  let day = null, rows = [], ship = 0, yday = null, yrows = [], checks = null, openS = null, editId = null, qtext = "", hist = null, histDays = 14, busy = false, armImport = null;
+  let day = null, rows = [], ship = 0, yday = null, yrows = [], checks = null, openS = null, editId = null, qtext = "", hist = null, histDays = 14, busy = false, armImport = null, autoJumped = false, jumpNote = "";
 
   /* ---------- 外框 ---------- */
   const css = `
@@ -160,12 +160,19 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       const all = await R.byDay(day);
       ship = all.filter(r => r.s === "已出货").length;
       rows = all.filter(r => r.q > 0 && ST.includes(r.s)).sort((a, b) => (a.t || 0) - (b.t || 0));
+      // 今天还没有数据：自动切到最近有数据的那天（每次打开只自动切一次，之后手动选哪天就是哪天）
+      if (!rows.length && !ship && !autoJumped && tab !== "entry") {
+        autoJumped = true;
+        const ld = await R.lastDayBefore(day);
+        if (ld) { $("day").value = ld; jumpNote = `${day.slice(5).replace("-", "/")} 还没有数据，已显示最近有数据的 ${ld.slice(5).replace("-", "/")}。`; return load() }
+      }
       const yd = await R.lastDayBefore(day);
       if (yd !== yday) { yday = yd; yrows = yd ? (await R.query("d", "==", yd)).filter(r => r.q > 0 && ST.includes(r.s)) : [] }
       checks = (await KV.get("checks_" + day)) || null;
       syncSum(day, all).catch(e => console.error(e));
     } catch (e) { console.error(e); msg("读取云端数据失败，请检查网络后再试。", "err") }
     if (tab !== "entry") render(); paintDot();
+    if (jumpNote) { msg(jumpNote, "ok"); jumpNote = "" }
   }
   let rt = null;
   Cloud.onChange(() => { clearTimeout(rt); rt = setTimeout(() => { if (editId || document.activeElement && document.activeElement.closest && document.activeElement.closest(".qd-ed")) return; load() }, 300) });
