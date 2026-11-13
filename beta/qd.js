@@ -15,6 +15,27 @@
   const R = Cloud.store("pandian_records"), KV = Cloud.kv("pandian_kv");
   const LS = { get: (k, d) => { try { return localStorage.getItem(k) || d } catch (e) { return d } }, set: (k, v) => { try { localStorage.setItem(k, v) } catch (e) { } } };
 
+  const SUM = Cloud.store("pandian_sum");
+  let sums = null, dashR = +LS.get("qd_range", "30"), armHist = null, sumMsg = "";
+  async function loadSums() { try { const a = await SUM.all(); sums = new Map(a.map(x => [x.d, x])) } catch (e) { sums = sums || new Map() } return sums }
+  const sameSum = (a, b) => a && b && a.n === b.n && a.flags === b.flags && JSON.stringify(a.sp) === JSON.stringify(b.sp);
+  async function syncSum(d, all) {
+    if (!d || !window.QDA) return; if (!sums) await loadSums();
+    const x = QDA.summarize(d, all || []), old = sums.get(d);
+    if (!x.n) { if (old) { sums.delete(d); await SUM.del(d) } return }
+    if (!sameSum(x, old)) { sums.set(d, x); await SUM.put(x) }
+  }
+  async function rebuildSums() {
+    sumMsg = "正在重新计算全部汇总（第一次会久一点）…"; render();
+    try {
+      const all = await R.allOnce(), by = new Map(); all.forEach(r => { if (!r.d) return; (by.get(r.d) || by.set(r.d, []).get(r.d)).push(r) });
+      await loadSums(); let w = 0;
+      for (const [d, l] of by) { const x = QDA.summarize(d, l); if (x.n && !sameSum(x, sums.get(d))) { sums.set(d, x); await SUM.put(x); w++ } }
+      for (const d of [...sums.keys()]) if (!by.has(d)) { sums.delete(d); await SUM.del(d); w++ }
+      sumMsg = `已重新计算：${by.size} 天，更新了 ${w} 天。`;
+    } catch (e) { console.error(e); sumMsg = "重新计算失败，请检查网络后再试。" }
+    render();
+  }
   let tab = LS.get("qd_tab", "list"), sub = LS.get("qd_sub", "photo"), cmpF = "all", ckF = "all";
   let day = null, rows = [], ship = 0, yday = null, yrows = [], checks = null, openS = null, editId = null, qtext = "", hist = null, histDays = 14, busy = false, armImport = null;
 
@@ -43,7 +64,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 .qd-card.in{background:var(--st-in);color:var(--st-in-ink);border-color:transparent}.qd-card.pk{background:var(--st-pk);color:var(--st-pk-ink);border-color:transparent}.qd-card.nw{background:var(--st-new);color:var(--st-new-ink);border-color:transparent}
 .qd-card .l{font-size:13px;font-weight:700;display:flex;justify-content:space-between;gap:4px}
 .qd-card .b{font-family:var(--f-data);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.qd-card .s{font-family:var(--f-data);font-size:12px;opacity:.85;white-space:nowrap}
+.qd-card .s{font-family:var(--f-data);font-size:12px;opacity:.85;overflow-wrap:anywhere}
 @media (max-width:700px){.qd-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.qd-card .b{font-size:18px}}
 .qd-seg{display:flex;gap:4px;background:var(--soft);padding:4px;border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .qd-seg button{flex:1 0 auto;border:0;background:none;border-radius:7px;min-height:38px;padding:0 12px;font-weight:600;font-size:14px;color:var(--muted);white-space:nowrap}
@@ -97,14 +118,15 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 .qd-ed label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
 .qd-ed input{min-height:44px;border:2px solid var(--accent);border-radius:8px;padding:0 8px;font-family:var(--f-data);font-size:17px;background:var(--panel);color:var(--ink);width:100%}
 .qd-q{display:flex;gap:8px}
-.qd-q input{flex:1;min-height:52px;font-size:22px;font-weight:700;border:2px solid #bf8f00;background:#fff2cc;color:#c00000;border-radius:10px;padding:0 14px;font-family:var(--f-data);text-transform:uppercase}
+.qd-q #qdQClr{min-width:52px;font-size:18px}
+.qd-q input{flex:1;min-width:0;min-height:52px;font-size:22px;font-weight:700;border:2px solid #bf8f00;background:#fff2cc;color:#c00000;border-radius:10px;padding:0 14px;font-family:var(--f-data);text-transform:uppercase}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .qd-q input{background:#3d3313;color:#ffb3b8}}
 .qd-more{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
 .qd-more .it{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
 .qd-more .it h3{margin:0;font-size:16px}.qd-more .it p{margin:0;color:var(--muted);font-size:14px}
 .qd-more .soon{font-size:12px;font-weight:700;color:var(--warn-ink);background:var(--warn-bg);border-radius:6px;padding:1px 8px;align-self:flex-start}
 .qd-trend{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px}
-.qd-trend svg{width:100%;height:auto;display:block}
+.qd-trend svg{width:100%;max-width:860px;height:auto;display:block;margin:6px auto 0}
 `;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
   const ICON = {
@@ -124,8 +146,9 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 
   function setTab(t) {
     tab = t; LS.set("qd_tab", t); document.body.dataset.tab = t; openS = null; editId = null;
-    for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false");
-    if (t !== "entry") { render(); if (day) load() } else if (window.WC && WC.reload) WC.reload();
+    const bt = ["dash", "data", "ship"].includes(t) ? "more" : t;
+    for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === bt ? "page" : "false");
+    if (t === "dash") { render(); loadSums().then(render) } else if (t !== "entry") { render(); if (day) load() } else if (window.WC && WC.reload) WC.reload();
     window.scrollTo(0, 0);
   }
   bar.addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab) });
@@ -140,6 +163,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       const yd = await R.lastDayBefore(day);
       if (yd !== yday) { yday = yd; yrows = yd ? (await R.query("d", "==", yd)).filter(r => r.q > 0 && ST.includes(r.s)) : [] }
       checks = (await KV.get("checks_" + day)) || null;
+      syncSum(day, all).catch(e => console.error(e));
     } catch (e) { console.error(e); msg("读取云端数据失败，请检查网络后再试。", "err") }
     if (tab !== "entry") render(); paintDot();
   }
@@ -159,7 +183,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     const patch = { s }; if (!ST.includes(r.s0)) patch.s0 = r.s;
     patch.hist = (r.hist || []).concat([{ at: new Date().toISOString(), f: { s: r.s }, to: { s } }]).slice(-20);
     Object.assign(r, patch); openS = null; render(); paintDot();
-    await R.update(id, patch);
+    await R.update(id, patch); syncSum(day, rows).catch(() => { });
   }
   async function saveEdit(id, vals) {
     const r = rows.find(x => x.id === id); if (!r) return;
@@ -169,7 +193,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     patch.hist = (r.hist || []).concat([{ at: new Date().toISOString(), f: from, to: Object.assign({}, patch) }]).slice(-20);
     Object.assign(r, patch); editId = null;
     await setRes(id, "已改正", true); render();
-    await R.update(id, patch);
+    await R.update(id, patch); syncSum(day, rows).catch(() => { });
     msg(`已改正：${Object.keys(from).map(k => ({ m: "型号", L: "长度", w: "支重", q: "支数" }[k]) + " " + from[k] + " → " + patch[k]).join("，")}`, "ok");
   }
   async function setRes(id, v, quiet) {
@@ -186,7 +210,11 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     if (!data || data.app !== "chejian-pandian" || !Array.isArray(data.records)) { msg("这个文件不是车间盘点的导入文件。", "err"); return }
     const recs = data.records.filter(r => r && r.id && r.d && r.m);
     const days = [...new Set(recs.map(r => r.d))];
-    if (days.length !== 1) { msg(`这个文件里有 ${days.length} 天的数据，像是“备份文件”。请到“更多 → 从备份恢复”。`, "err"); return }
+    if (days.length > 1) {
+      days.sort(); const have = {};
+      for (const d of days) { const h = (await R.query("d", "==", d)).filter(r => r.s !== "已出货").length; if (h) have[d] = h }
+      armHist = { days, recs, have, catalog: data.catalog || [] }; if (tab !== "list") setTab("list"); else render(); return;
+    }
     const d = data.day || days[0];
     const have = (await R.query("d", "==", d)).filter(r => r.s !== "已出货");
     armImport = { d, recs, checks: data.checks || [], catalog: data.catalog || [], have };
@@ -194,6 +222,17 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     if (!have.length) return doImport();
     render();
   });
+  async function doHist() {
+    const a = armHist; armHist = null; if (!a) return; busy = true; render();
+    try {
+      const go = a.days.filter(d => !a.have[d]), list = a.recs.filter(r => go.includes(r.d)).map(r => Object.assign({}, r, { s0: ST.includes(r.s0) ? r.s0 : r.s }));
+      if (list.length) await R.putMany(list);
+      for (const d of go) await syncSum(d, list.filter(r => r.d === d));
+      try { const W = window.WC; if (W && a.catalog.length) { const cat = W.cat(); const hv = new Set(cat.map(x => x.m + "|" + x.L + "|" + x.w)); let add = 0; a.catalog.forEach(x => { const k = x.m + "|" + x.L + "|" + x.w; if (x && x.m && !hv.has(k)) { cat.push(x); hv.add(k); add++ } }); if (add) await W.S.setCat(cat) } } catch (e) { }
+      busy = false; render();
+      msg(`历史数据已导入：${go.length} 天、${list.length} 行${Object.keys(a.have).length ? `；跳过已经有数据的 ${Object.keys(a.have).length} 天` : ""}。看板里已经能看到走势。`, "ok");
+    } catch (e) { busy = false; console.error(e); render(); msg("导入没有完成，请检查网络后再导入一次（已经导入的日子会自动跳过）。", "err") }
+  }
   async function doImport() {
     const a = armImport; armImport = null; if (!a) return; busy = true; render();
     try {
@@ -252,8 +291,10 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       <span class="sub">${day ? md(day) : ""}${rows.length ? ` · ${rows.length} 行` : ""}${yday ? ` · 和 ${md(yday)} 比` : ""}${ship ? ` · 另有已出货 ${ship} 行（不算在内）` : ""}</span></div>`;
     const conf = armImport ? `<div class="qd-confirm"><div class="t"><b>${md(armImport.d)} 已经有 ${armImport.have.length} 行数据。</b><br>导入会用文件里的 ${armImport.recs.length} 行替换掉它们（查错单的核对结果会保留）。</div><button type="button" class="btn primary" id="qdImpOk">替换</button><button type="button" class="btn" id="qdImpNo">取消</button></div>` : "";
     const m = `<div class="qd-msg" id="qdMsg"></div>`;
+    const hc = armHist ? (() => { const a = armHist, skip = a.days.filter(d => a.have[d]), go = a.days.filter(d => !a.have[d]), n = a.recs.filter(r => go.includes(r.d)).length;
+      return `<div class="qd-confirm"><div class="t"><b>历史数据：${a.days.length} 天（${md(a.days[0])}–${md(a.days[a.days.length - 1])}），共 ${a.recs.length} 行。</b><br>${go.length ? `将导入 ${go.length} 天、${n} 行。` : "这些日子都已经有数据了，不用导入。"}${skip.length ? `<br>已经有数据的 ${skip.length} 天会跳过、不动：${skip.map(md).join("、")}` : ""}</div>${go.length ? `<button type="button" class="btn primary" id="qdHistOk">导入</button>` : ""}<button type="button" class="btn" id="qdHistNo">${go.length ? "取消" : "知道了"}</button></div>` })() : "";
     if (busy) return tool + m + `<div class="qd-empty"><b>正在导入…</b>请不要关掉 App。</div>`;
-    if (!rows.length) return tool + conf + m + `<div class="qd-empty"><b>${md(day)} 还没有清单</b><span>拍照发给 Claude，拿到“车间盘点导入_MMDD.json”以后，点上面的“导入当天文件”选它就行。</span></div>`;
+    if (!rows.length) return tool + hc + conf + m + `<div class="qd-empty"><b>${md(day)} 还没有清单</b><span>拍照发给 Claude，拿到“车间盘点导入_MMDD.json”以后，点上面的“导入当天文件”选它就行。</span></div>`;
     const seg = `<div class="qd-seg" id="qdSeg">${[["photo", "照片顺序"], ["status", "按状态排列"], ["model", "按型号汇总"], ["cmp", "与昨天对比"]].map(([k, t]) => `<button type="button" data-sub="${k}" aria-pressed="${sub === k}">${t}</button>`).join("")}</div>`;
     let body = "";
     if (sub === "photo") body = `<div class="qd-tw"><table class="qd-t"><thead>${HEAD}</thead><tbody>${rows.map(rowHTML).join("")}</tbody></table></div>`;
@@ -268,7 +309,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       const ks = [...g.values()].sort((a, b) => a.m < b.m ? -1 : a.m > b.m ? 1 : a.L - b.L || a.w - b.w);
       body = `<div class="qd-tw"><table class="qd-t"><thead><tr><th class="c1">#</th><th class="c2">型号</th><th>长度</th><th>支重</th><th>已入库</th><th>包装中</th><th>刚生产</th><th>合计</th><th>重量kg</th></tr></thead><tbody>${ks.map((a, i) => { const t = a.q["已入库"] + a.q["包装中"] + a.q["刚生产"]; return `<tr><td class="c1">${i + 1}</td><td class="c2">${esc(a.m)}</td><td class="L">${a.L}</td><td class="W">${a.w}</td>${ST.map(s => `<td style="background:var(--st-${CLS[s] === "nw" ? "new" : CLS[s]})">${a.q[s] ? n0(a.q[s]) : ""}</td>`).join("")}<td class="Q">${n0(t)}</td><td>${n1(a.kg)}</td></tr>` }).join("")}</tbody></table></div>`;
     } else body = cmpHTML();
-    return tool + conf + m + totalsHTML(rows) + seg + body;
+    return tool + hc + conf + m + totalsHTML(rows) + seg + body;
   }
   function cmpRows() {
     const kk = r => norm(r.m) + "|" + (+r.L) + "|" + (+r.w);
@@ -314,12 +355,20 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
   }
 
   /* ---------- 页面：型号查询 ---------- */
+  // 型号查询：输入框只画一次，打字时只刷新下面的结果（不然 iPhone 键盘会被重置回默认输入法）
+  const recentQ = () => { try { return JSON.parse(LS.get("qd_recent", "[]")) } catch (e) { return [] } };
+  function saveRecent(t) { t = String(t || "").trim().toUpperCase(); if (!t) return; const l = [t].concat(recentQ().filter(x => x !== t)).slice(0, 10); LS.set("qd_recent", JSON.stringify(l)) }
   function viewQuery() {
+    return `<div class="qd-q"><input id="qdQ" type="search" placeholder="输入型号，如 8004、QG7801" value="${esc(qtext)}" autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off" enterkeyhint="search"><button type="button" class="btn" id="qdQClr" aria-label="清空">✕</button></div>
+      <div id="qdQR">${queryResults()}</div>`;
+  }
+  function queryResults() {
     const k = norm(qtext), hit = k ? rows.map((r, i) => [r, i]).filter(([r]) => norm(r.m).includes(k)) : [];
-    let out = `<div class="qd-q"><input id="qdQ" placeholder="输入型号，如 8004、QG7801" value="${esc(qtext)}" autocapitalize="characters" spellcheck="false" autocomplete="off" enterkeyhint="search"></div>
-      <div class="sub" style="color:var(--muted);font-size:13px">可以只输一部分，不分大小写，有没有“-”都行。${k ? `找到 <b>${hit.length}</b> 行（${md(day)}）` : ""}</div>`;
+    const rec = recentQ();
+    let out = `<div class="sub" style="color:var(--muted);font-size:13px">可以只输一部分，不分大小写，有没有“-”都行。${k ? `找到 <b>${hit.length}</b> 行（${md(day)}）` : ""}</div>`;
+    if (rec.length) out += `<div class="qd-chips" style="margin-top:6px">${rec.map(x => `<button type="button" data-rq="${esc(x)}" aria-pressed="${norm(x) === k}">${esc(x)}</button>`).join("")}</div>`;
     if (!k) return out;
-    if (!hit.length) return out + `<div class="qd-empty"><b>${md(day)} 没找到这个型号</b><span>换个写法试试，或者看最近几天：</span><button type="button" class="btn" id="qdHist">看最近 ${histDays} 天</button></div>` + histHTML(k);
+    if (!hit.length) return out + `<div class="qd-empty"><b>${md(day)} 没找到这个型号</b><span>换个写法试试，或者看最近几天：</span>${hist ? "" : `<button type="button" class="btn" id="qdHist">看最近 ${histDays} 天</button>`}</div>` + histHTML(k);
     out += totalsHTML(hit.map(x => x[0]));
     out += `<div class="qd-tw" style="max-height:none"><table class="qd-t"><thead>${HEAD}</thead><tbody>${hit.map(([r, i]) => rowHTML(r, i)).join("")}</tbody></table></div>`;
     out += hist ? histHTML(k) : `<div><button type="button" class="btn" id="qdHist">看这个型号最近 ${histDays} 天的走势</button></div>`;
@@ -350,7 +399,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     const ch = window.CHUHUO_URL || "./chuhuo/";
     const it = (t, p, btn, soon) => `<div class="it"><h3>${t}</h3>${soon ? `<span class="soon">${soon}</span>` : ""}<p>${p}</p>${btn || ""}</div>`;
     return `<div class="qd-msg" id="qdMsg"></div><div class="qd-more">
-      ${it("库存看板", "每天库存走势、各状态占比、出货（估）、支重区间。", "", "第二步做")}
+      ${it("库存看板", "每天库存走势、各状态占比、出货（估）/新增（估）、支重区间、出货最快和呆货排行。", `<button type="button" class="btn primary" id="qdDash">打开看板</button>`)}
       ${it("产品大数据 / 型号库", "每个型号的库存、出货（估）、可卖天数、趋势；型号标准库审核。", "", "第三步做")}
       ${it("出货", "分配客户和加工厂、提货单、提货后自动扣库存。以后接进这里。", `<a class="btn" href="${ch}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">打开现有的出货 App</a>`, "预留入口")}
       ${it("拍照识别", "在 App 里直接拍手写单识别。需要 Claude API 密钥（按用量付费），以后再开。", `<button type="button" class="btn" id="qdScan">打开拍照识别</button>`)}
@@ -360,13 +409,85 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     </div>`;
   }
 
+  /* ---------- 页面：库存看板 ---------- */
+  const SC = { "已入库": "#7fb069", "包装中": "#6fa8dc", "刚生产": "#f6b26b" };
+  const CW = () => (window.innerWidth || 800) < 700 ? 420 : 720;
+  const niceMax = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p };
+  const wan = n => Math.abs(n) >= 10000 ? (n / 10000).toLocaleString("zh-CN", { maximumFractionDigits: 1 }) + "万" : n0(n);
+  function axisY(W, H, pl, pb, pt, mx, unit) {
+    return [0, .25, .5, .75, 1].map(f => { const y = H - pb - f * (H - pb - pt); return `<line x1="${pl}" x2="${W - 6}" y1="${y}" y2="${y}" stroke="currentColor" stroke-opacity="${f ? .12 : .35}"/><text x="${pl - 6}" y="${y + 4}" font-size="11" text-anchor="end" fill="currentColor" fill-opacity=".7">${wan(mx * f)}${f === 1 && unit ? unit : ""}</text>` }).join("");
+  }
+  function xLabels(days, x0, bw, H, every) { return days.map((d, i) => (i % every === 0 || i === days.length - 1) ? `<text x="${x0 + i * bw + bw / 2}" y="${H - 6}" font-size="11" text-anchor="middle" fill="currentColor" fill-opacity=".7">${md(d)}</text>` : "").join("") }
+  function stockChart(A) {
+    const W = CW(), H = W < 700 ? 220 : 240, pl = 50, pb = 22, pt = 12, ds = A.days, bw = (W - pl - 6) / Math.max(1, ds.length), mx = niceMax(Math.max(...ds.map(d => A.daily[d].q)));
+    let g = ""; ds.forEach((d, i) => {
+      let y = H - pb; const t = A.daily[d];
+      ST.forEach(s => { const h = t[s] / mx * (H - pb - pt); if (h > 0) { y -= h; g += `<rect x="${pl + i * bw + bw * .14}" y="${y}" width="${bw * .72}" height="${h}" fill="${SC[s]}"><title>${md(d)} ${s} ${n0(t[s])} 支</title></rect>` } });
+      g += `<rect x="${pl + i * bw}" y="${pt}" width="${bw}" height="${H - pb - pt}" fill="transparent"><title>${md(d)}  合计 ${n0(t.q)} 支 / ${n1(t.kg)} kg\n已入库 ${n0(t["已入库"])}  包装中 ${n0(t["包装中"])}  刚生产 ${n0(t["刚生产"])}</title></rect>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每天库存（支）">${axisY(W, H, pl, pb, pt, mx, "")}${g}${xLabels(ds, pl, bw, H, Math.ceil(ds.length / (W < 700 ? 6 : 10)))}</svg>`;
+  }
+  function flowChart(A) {
+    const ds = A.days.slice(1); if (!ds.length) return `<div class="sub">只有一天的数据，还算不出出货（估）。</div>`;
+    const W = CW(), H = 220, pl = 50, pb = 22, pt = 12, bw = (W - pl - 6) / ds.length, mx = niceMax(Math.max(...ds.map(d => Math.max(A.flow[d].oq, A.flow[d].iq))));
+    let g = ""; ds.forEach((d, i) => {
+      const f = A.flow[d], h1 = f.oq / mx * (H - pb - pt), h2 = f.iq / mx * (H - pb - pt), x = pl + i * bw;
+      g += `<rect x="${x + bw * .12}" y="${H - pb - h1}" width="${bw * .36}" height="${h1}" fill="#e06666"><title>${md(d)} 出货(估) ${n0(f.oq)} 支 / ${n1(f.ok)} kg</title></rect><rect x="${x + bw * .52}" y="${H - pb - h2}" width="${bw * .36}" height="${h2}" fill="#7fb069"><title>${md(d)} 新增(估) ${n0(f.iq)} 支 / ${n1(f.ik)} kg</title></rect>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="每天出货（估）和新增（估）">${axisY(W, H, pl, pb, pt, mx, "")}${g}${xLabels(ds, pl, bw, H, Math.ceil(ds.length / (W < 700 ? 6 : 10)))}</svg>`;
+  }
+  function bandChart(A) {
+    const B = A.binstat, W = CW(), rh = 30, pl = 80, H = B.length * rh + 26, mx = niceMax(Math.max(...B.map(b => Math.max(b.stock_kg, b.out_kg))));
+    let g = ""; B.forEach((b, i) => {
+      const y = 8 + i * rh, w1 = b.stock_kg / mx * (W - pl - 70), w2 = b.out_kg / mx * (W - pl - 70);
+      g += `<text x="${pl - 8}" y="${y + 16}" font-size="12" text-anchor="end" fill="currentColor">${b.band}</text><rect x="${pl}" y="${y + 2}" width="${w1}" height="11" rx="2" fill="#6fa8dc"><title>${b.band} 库存 ${n1(b.stock_kg)} kg（${b.specs_now} 个规格）</title></rect><rect x="${pl}" y="${y + 15}" width="${w2}" height="11" rx="2" fill="#e06666"><title>${b.band} 出货(估) ${n1(b.out_kg)} kg</title></rect><text x="${pl + Math.max(w1, w2) + 6}" y="${y + 13}" font-size="11" fill="currentColor" fill-opacity=".75">${wan(b.stock_kg)}kg</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="支重区间">${g}<text x="${pl}" y="${H - 4}" font-size="11" fill="currentColor" fill-opacity=".7">按 6 米理论支重分档 · 蓝 = 最新库存 kg · 红 = 区间内出货（估）kg</text></svg>`;
+  }
+  function viewDash() {
+    const back = `<div class="qd-tool"><button type="button" class="btn" id="qdBack">‹ 更多</button><b style="font-size:18px">库存看板</b><span class="grow" style="flex:1"></span><button type="button" class="btn" id="qdRebuild">重新计算</button></div>`;
+    const sm = sumMsg ? `<div class="qd-msg ok">${esc(sumMsg)}</div>` : "";
+    if (!sums) return back + `<div class="qd-empty"><b>正在读取…</b></div>`;
+    if (!sums.size) return back + sm + `<div class="qd-empty"><b>还没有汇总数据</b><span>先在“今日清单”导入当天文件或历史数据；已经导入过的，点右上角“重新计算”。</span></div>`;
+    const all = [...sums.values()].sort((a, b) => a.d < b.d ? -1 : 1), lastD = all[all.length - 1].d;
+    let use = all; if (dashR) { const c = new Date(lastD + "T12:00:00"); c.setDate(c.getDate() - dashR + 1); const from = c.toISOString().slice(0, 10); use = all.filter(x => x.d >= from) }
+    const A = QDA.analyze(use), ds = A.days, L = A.daily[ds[ds.length - 1]], P = ds.length > 1 ? A.daily[ds[ds.length - 2]] : null, F = A.flow[ds[ds.length - 1]];
+    const tot = ds.slice(1).reduce((a, d) => ({ oq: a.oq + A.flow[d].oq, ok: a.ok + A.flow[d].ok, iq: a.iq + A.flow[d].iq, ik: a.ik + A.flow[d].ik }), { oq: 0, ok: 0, iq: 0, ik: 0 });
+    const dlt = P ? L.q - P.q : 0;
+    const chips = `<div class="qd-chips">${[[7, "7 天"], [14, "14 天"], [30, "30 天"], [0, "全部"]].map(([v, t]) => `<button type="button" data-rg="${v}" aria-pressed="${dashR === v}">${t}</button>`).join("")}<span class="sub" style="align-self:center;color:var(--muted);font-size:13px">${ds.length} 次盘点 · ${md(ds[0])}–${md(lastD)}</span></div>`;
+    const kpi = `<div class="qd-cards">
+      <div class="qd-card"><div class="l"><span>最新库存 ${md(lastD)}</span>${P ? `<span class="num" style="color:${dlt >= 0 ? "#2f7d3b" : "#c00000"}">${dlt >= 0 ? "+" : ""}${n0(dlt)}</span>` : ""}</div><div class="b">${n0(L.q)} 支</div><div class="s">${n1(L.kg)} kg · ${L.n} 行</div></div>
+      <div class="qd-card in"><div class="l"><span>已入库</span></div><div class="b">${n0(L["已入库"])} 支</div><div class="s">包装中 ${n0(L["包装中"])} · 刚生产 ${n0(L["刚生产"])}</div></div>
+      <div class="qd-card nw"><div class="l"><span>出货（估）${md(lastD)}</span></div><div class="b">${F ? n0(F.oq) : "—"} 支</div><div class="s">${F ? n1(F.ok) + " kg · 新增(估) " + n0(F.iq) + " 支" : "要两天以上才能算"}</div></div>
+      <div class="qd-card pk"><div class="l"><span>区间出货（估）合计</span></div><div class="b">${n0(tot.oq)} 支</div><div class="s">${n1(tot.ok)} kg · 平均每次 ${n0(ds.length > 1 ? tot.oq / (ds.length - 1) : 0)} 支</div></div></div>`;
+    const MI = A.MI;
+    const tbl = (title, list, cols, empty) => `<div class="qd-trend"><b>${title}</b>${list.length ? `<div class="qd-tw" style="max-height:none;margin-top:8px"><table class="qd-t"><thead><tr><th class="c1">#</th><th class="c2">型号</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${list.map((m, i) => `<tr><td class="c1">${i + 1}</td><td class="c2"><button type="button" class="qd-st" data-gm="${esc(m.name)}" style="border:0;padding:0;min-height:0;font-family:var(--f-data)">${esc(m.name)}</button></td>${cols.map(c => `<td>${c[1](m)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : `<div class="sub" style="color:var(--muted)">${empty}</div>`}</div>`;
+    const fast = MI.filter(m => m.ok > 0).sort((a, b) => b.ok - a.ok).slice(0, 10);
+    const low = MI.filter(m => m.sell !== null && m.sell < 5 && m.nout >= 3 && m.cur > 0).sort((a, b) => a.sell - b.sell).slice(0, 10);
+    const dead = MI.filter(m => m.tr === "呆货(没动过)" || m.tr === "上涨(可能积压)").sort((a, b) => b.curk - a.curk).slice(0, 10);
+    const big = MI.slice().sort((a, b) => b.curk - a.curk).slice(0, 10);
+    const legend = `<span style="font-size:13px;color:var(--muted)">${ST.map(s => `<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${SC[s]};margin:0 4px 0 8px"></i>${s}`).join("")}</span>`;
+    return back + sm + chips + kpi +
+      `<div class="qd-trend"><b>每天库存（支）</b>${legend}${stockChart(A)}</div>
+       <div class="qd-trend"><b>每次盘点的出货（估）和新增（估）（支）</b><span style="font-size:13px;color:var(--muted)"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e06666;margin:0 4px 0 8px"></i>出货（估）<i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#7fb069;margin:0 4px 0 8px"></i>新增（估）</span>${flowChart(A)}<div class="sub" style="color:var(--muted);font-size:12px">出货（估）= 每个型号比上一次少了多少（只算减少的），不是真实出货单；新增（估）= 比上一次多了多少。</div></div>
+       <div class="qd-trend"><b>支重区间</b>${bandChart(A)}</div>
+       <div class="qd-ck" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">
+       ${tbl("出货最快 TOP10", fast, [["出货(估)支", m => n0(m.oq)], ["kg", m => n1(m.ok)], ["次数", m => m.nout], ["现库存", m => n0(m.cur)]], "这段时间没有出货（估）。")}
+       ${tbl("可能不够（可卖天数 < 5）", low, [["现库存", m => n0(m.cur)], ["每次出货", m => n0(m.dq)], ["可卖次数", m => n1(m.sell)]], "没有快卖完的型号。")}
+       ${tbl("呆货 / 可能积压", dead, [["现库存", m => n0(m.cur)], ["kg", m => n1(m.curk)], ["趋势", m => m.tr]], "没有呆货。")}
+       ${tbl("库存最多 TOP10（kg）", big, [["现库存", m => n0(m.cur)], ["kg", m => n1(m.curk)], ["趋势", m => m.tr]], "")}
+       </div><div class="sub" style="color:var(--muted);font-size:12px">点型号可以跳到“型号查询”。数据来自每天导入的清单；在 App 里改了状态、支数会自动更新。</div>`;
+  }
+
   /* ---------- 渲染 + 事件 ---------- */
   function render() {
     if (tab === "entry") return;
+    if (tab === "query" && box.dataset.v === "query" && $("qdQ") && $("qdQR")) { const tw = $("qdQR").querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0; $("qdQR").innerHTML = queryResults(); const t2 = $("qdQR").querySelector(".qd-tw"); if (t2) t2.scrollLeft = sx; return }
+    box.dataset.v = tab;
     const keepQ = document.activeElement && document.activeElement.id === "qdQ", sel = keepQ ? document.activeElement.selectionStart : 0;
     const old = $("qdMsg"), om = old ? [old.textContent, old.className] : null;
     const tw = box.querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0, sy = tw ? tw.scrollTop : 0;
-    box.innerHTML = tab === "list" ? viewList() : tab === "check" ? viewCheck() : tab === "query" ? viewQuery() : viewMore();
+    box.innerHTML = tab === "list" ? viewList() : tab === "check" ? viewCheck() : tab === "query" ? viewQuery() : tab === "dash" ? viewDash() : viewMore();
     if (om && $("qdMsg")) { $("qdMsg").textContent = om[0]; $("qdMsg").className = om[1] }
     const tw2 = box.querySelector(".qd-tw"); if (tw2) { tw2.scrollLeft = sx; tw2.scrollTop = sy }
     if (keepQ && $("qdQ")) { $("qdQ").focus(); try { $("qdQ").setSelectionRange(sel, sel) } catch (e) { } }
@@ -377,6 +498,13 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     const b = t.closest("button, a"); if (!b) return;
     if (b.id === "qdImp") { file.click(); return }
     if (b.id === "qdImpOk") { doImport(); return }
+    if (b.id === "qdHistOk") { doHist(); return }
+    if (b.id === "qdHistNo") { armHist = null; render(); return }
+    if (b.id === "qdDash") { setTab("dash"); return }
+    if (b.id === "qdBack") { setTab("more"); return }
+    if (b.dataset.rg) { dashR = +b.dataset.rg; LS.set("qd_range", String(dashR)); render(); return }
+    if (b.id === "qdRebuild") { rebuildSums(); return }
+    if (b.dataset.gm) { qtext = b.dataset.gm; hist = null; setTab("query"); return }
     if (b.id === "qdImpNo") { armImport = null; render(); msg("已取消导入，原来的数据没有动。"); return }
     if (b.id === "qdExp") { exportXlsx(); return }
     if (b.dataset.sub) { sub = b.dataset.sub; LS.set("qd_sub", sub); openS = null; render(); return }
@@ -393,13 +521,17 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
       saveEdit(b.dataset.save, v); return;
     }
     if (b.id === "qdHist") { loadHist(); return }
+    if (b.id === "qdQClr") { qtext = ""; const q = $("qdQ"); if (q) { q.value = ""; q.focus() } render(); return }
+    if (b.dataset.rq) { qtext = b.dataset.rq; const q = $("qdQ"); if (q) q.value = qtext; render(); return }
     if (b.id === "qdScan") { setTab("entry"); const s = $("scanTop"); if (s) s.click(); return }
     if (b.id === "qdCat") { const c = $("catBtn"); if (c) c.click(); return }
     if (b.id === "qdBak") { const c = $("backupBtn"); if (c) { c.click(); msg("正在生成备份…") } return }
     if (b.id === "qdRes") { const c = $("restoreBtn"); if (c) c.click(); return }
     if (b.id === "qdOut") { Cloud.signOut(); return }
   });
-  box.addEventListener("input", e => { if (e.target.id === "qdQ") { qtext = e.target.value; hist = hist && hist !== "loading" ? hist : null; render() } });
+  let rqT = null;
+  box.addEventListener("input", e => { if (e.target.id === "qdQ") { qtext = e.target.value; render(); clearTimeout(rqT); rqT = setTimeout(() => { if (norm(qtext).length >= 3) { saveRecent(qtext) } }, 1500) } });
+  box.addEventListener("keydown", e => { if (e.target.id === "qdQ" && e.key === "Enter") { saveRecent(qtext); e.target.blur(); render() } });
   box.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".qd-ed")) { const s = box.querySelector("[data-save]"); if (s) s.click() } if (e.key === "Escape" && editId) { editId = null; render() } });
 
   /* ---------- 开始 ---------- */
