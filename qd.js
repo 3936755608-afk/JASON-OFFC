@@ -44,7 +44,7 @@
 :root{--chg:#ffe699;--chg-ink:#5a4300;--lv-h:#ffc7ce;--lv-h-ink:#9c0006;--lv-m:#fff2cc;--lv-m-ink:#7a5800;--lv-l:#ededed;--lv-l-ink:#555}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--chg:#4a3d12;--chg-ink:#ffe699;--lv-h:#4a1c20;--lv-h-ink:#ffb3b8;--lv-m:#3d3313;--lv-m-ink:#f3d98a;--lv-l:#2b2b2b;--lv-l-ink:#bbb}}
 body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
-body:not([data-tab="entry"]) .wrap>*:not(header.top):not(#qd):not(.banner){display:none!important}
+body:not([data-tab="entry"]) .wrap>*:not(header.top):not(#qd):not(.banner):not(dialog){display:none!important}
 body:not([data-tab="entry"]) #scanTop,body:not([data-tab="entry"]) #quickTop,body:not([data-tab="entry"]) #exportBtn{display:none}
 body[data-tab="entry"] #qd{display:none}
 body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
