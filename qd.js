@@ -411,12 +411,11 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 
   /* ---------- 页面：更多 ---------- */
   function viewMore() {
-    const ch = window.CHUHUO_URL || "./chuhuo/";
     const it = (t, p, btn, soon) => `<div class="it"><h3>${t}</h3>${soon ? `<span class="soon">${soon}</span>` : ""}<p>${p}</p>${btn || ""}</div>`;
     return `<div class="qd-msg" id="qdMsg"></div><div class="qd-more">
       ${it("库存看板", "每天库存走势、各状态占比、出货（估）/新增（估）、支重区间、出货最快和呆货排行。", `<button type="button" class="btn primary" id="qdDash">打开看板</button>`)}
       ${it("产品大数据 / 型号库", "每个型号的库存、出货（估）、可卖次数、趋势、详情走势；型号标准库审核；一键导出大数据 Excel。", `<button type="button" class="btn primary" id="qdData">打开大数据</button>`)}
-      ${it("出货", "分配客户和加工厂、提货单、确认提货后自动扣车间盘点。已经放进底部的“出货”标签。", `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" id="qdShip">打开出货</button><a class="btn" href="${ch}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">旧的出货 App</a></div>`)}
+      ${it("出货", "分配客户和加工厂、提货单、确认提货后自动扣车间盘点。已经放进底部的“出货”标签。", `<button type="button" class="btn primary" id="qdShip">打开出货</button>`)}
       ${it("拍照识别", "在 App 里直接拍手写单识别。需要 Claude API 密钥（按用量付费），以后再开。", `<button type="button" class="btn" id="qdScan">打开拍照识别</button>`)}
       ${it("型号库", "录入时下拉用的型号、长度、支重。", `<button type="button" class="btn" id="qdCat">打开型号库</button>`)}
       ${it("备份 / 恢复", "把云端全部数据存成一个文件，或者从备份文件恢复。", `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="qdBak">备份全部数据</button><button type="button" class="btn" id="qdRes">从备份恢复</button></div>`)}
