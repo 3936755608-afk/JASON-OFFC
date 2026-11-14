@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2b6e4f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="PETRJASON 销售">
+<title>PETRJASON 销售</title>
+<style>
+/* 销售部门用：客户和跟进、报价单、订单和发货、收款和欠款。数据只在销售 App 里（xs_* 集合），和车间的 PETRJASON 分开。 */
+:root{
+  --bg:#eef2f0; --panel:#ffffff; --ink:#1b2622; --muted:#5b6b64; --line:#d2dcd7; --soft:#e3eae6;
+  --accent:#2b6e4f; --accent-ink:#ffffff; --danger:#b3261e; --warn-bg:#fff4cc; --warn-ink:#6b4e00; --ok:#2f6b2a; --ok-bg:#e2efda;
+  --len:#5b2fa8; --wt:#b3125c; --money:#0b5394; --head:#305496; --foot:#d9e1f2; --foot-ink:#1b2328;
+  --f-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --f-data:"SF Mono",ui-monospace,Menlo,Consolas,monospace; --r:10px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121815; --panel:#1a221e; --ink:#e4ece8; --muted:#98a8a0; --line:#2e3a34; --soft:#232c27;
+  --accent:#7fd1a8; --accent-ink:#0c1c14; --danger:#ff8a80; --warn-bg:#3d3313; --warn-ink:#f3d98a; --ok:#b9dca4; --ok-bg:#24361c;
+  --len:#c9b2ff; --wt:#ff9cc6; --money:#9cc8ff; --head:#2b4a85; --foot:#2a3550; --foot-ink:#e6ecef; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+[hidden]{display:none!important}
+body{font-family:var(--f-body);font-size:16px;line-height:1.5;padding:12px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.d{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+header.top h1{font-size:22px;margin:0}
+header.top h1 small{font-size:13px;background:#c00000;color:#fff;border-radius:6px;padding:1px 8px;vertical-align:middle;margin-left:6px}
+.grow{flex:1}
+.sub{color:var(--muted);font-size:13px}
+.sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}.sync.ok i{background:#3b9a4c}.sync.bad i{background:var(--danger)}
+.banner{background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:10px 14px;font-size:14px}
+.msg{font-size:14px;min-height:20px}.msg:empty{display:none}.msg.err{color:var(--danger)}.msg.ok{color:var(--ok)}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 14px;min-height:42px;font-weight:600}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.sm{min-height:34px;padding:2px 10px;font-size:14px}
+.btn:disabled{opacity:.5;cursor:default}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.bar .in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
+.bar button{border:0;background:none;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--muted);font-weight:600}
+.bar button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bar button[aria-current="page"]{color:var(--accent)}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;min-width:0}
+.card .l{font-size:13px;color:var(--muted);font-weight:600}
+.card .b{font-family:var(--f-data);font-size:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .s{font-family:var(--f-data);font-size:12px;color:var(--muted)}
+.card.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:transparent}.card.warn .l,.card.warn .s{color:inherit}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h2{font-size:16px;margin:0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+.side{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start}
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tools input,.tools select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;min-height:42px;min-width:0}
+.tools input.q{flex:1 1 200px}
+.seg{display:flex;gap:4px;background:var(--soft);padding:4px;border-radius:10px;overflow-x:auto}
+.seg button{flex:1 0 auto;border:0;background:none;border-radius:7px;min-height:36px;padding:0 12px;font-weight:600;font-size:14px;color:var(--muted);white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tw{overflow:auto;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch}
+table.g{border-collapse:separate;border-spacing:0;width:100%;font-family:var(--f-data);font-size:14px;font-variant-numeric:tabular-nums}
+.g th{position:sticky;top:0;z-index:2;background:var(--head);color:#fff;font-family:var(--f-body);font-size:13px;font-weight:700;padding:8px;white-space:nowrap;text-align:center}
+.g td{padding:0 8px;height:42px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right;background:var(--panel)}
+.g td.tl{text-align:left;font-family:var(--f-body)}.g td.ct{text-align:center}
+.g td.L{color:var(--len);font-weight:700}.g td.W{color:var(--wt);font-weight:700}.g td.M{color:var(--money);font-weight:700}.g td.B{font-weight:700}
+.g tbody tr.click{cursor:pointer}.g tbody tr.click:hover td{background:var(--soft)}
+.g tfoot td{background:var(--foot);color:var(--foot-ink);font-weight:700;position:sticky;bottom:0}
+.g td input{width:100%;min-width:70px;height:34px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font:inherit;text-align:right;padding:0 6px}
+.g td input.m{text-align:left;min-width:110px;text-transform:uppercase}
+.g td input.bad{border-color:var(--danger);background:var(--warn-bg)}
+.g td .x{border:1px solid var(--line);background:var(--panel);border-radius:6px;min-height:30px;padding:0 8px;font-size:13px;font-family:var(--f-body);color:var(--danger)}
+.empty{color:var(--muted);text-align:center;padding:24px 12px}
+.chip{font-size:12px;font-weight:700;border-radius:999px;padding:1px 10px;font-family:var(--f-body);white-space:nowrap}
+.chip.wait{background:var(--warn-bg);color:var(--warn-ink)}.chip.part{background:#ddebf7;color:#1f4e79}.chip.done{background:var(--ok-bg);color:var(--ok)}.chip.gray{background:var(--soft);color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.field label{font-size:13px;color:var(--muted);font-weight:600}
+.field input,.field select,.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;min-height:44px;width:100%}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.res{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto}
+.res button{border:0;border-bottom:1px solid var(--soft);background:var(--panel);text-align:left;padding:8px 10px;min-height:42px;font-family:var(--f-data)}
+.res button:hover{background:var(--soft)}
+.tot{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:flex-end;font-size:15px}
+.tot b{font-family:var(--f-data);font-size:18px}.tot .M{color:var(--money)}
+.list{display:flex;flex-direction:column}
+.li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:10px 4px;border-bottom:1px solid var(--soft);cursor:pointer;align-items:center}
+.li:hover{background:var(--soft)}
+.li .n{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li .r{text-align:right;font-family:var(--f-data)}
+.fl{border-left:4px solid var(--line);padding:6px 10px;display:flex;flex-direction:column;gap:2px}
+.fl.due{border-left-color:#e0b000}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.more{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.more .it{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px}
+.more .it h3{margin:0;font-size:16px}.more .it p{margin:0;color:var(--muted);font-size:14px}
+@media (max-width:900px){.side,.two{grid-template-columns:minmax(0,1fr)}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.card .b{font-size:19px}}
+@media (pointer:coarse){.field input,.field select,.tools input{font-size:16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 id="title">PETRJASON 销售</h1>
+    <div class="grow"></div>
+    <div class="sync" id="cloudStatus"><i></i><span>连接中…</span></div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+  <main id="app"><div class="empty">正在读取…</div></main>
+</div>
+<nav class="bar" id="bar" aria-label="页面"></nav>
+<script src="../lib/firebase-app-compat.js"></script>
+<script src="../lib/firebase-auth-compat.js"></script>
+<script src="../lib/firebase-firestore-compat.js"></script>
+<script>window.CLOUD_SUFFIX="_beta";/* 测试版：数据单独存放。升级正式版时删掉这一句 */window.CLOUD_LOG="xs_log";window.CLOUD_PIN="xs_kv";</script>
+<script src="../lib/cloud.js"></script>
+<script src="../catalog.js"></script>
+<script src="xs.js"></script>
+<script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));</script>
+</body>
+</html>

@@ -10,3 +10,7 @@
 - 数据只保存在这台 iPad 上；请定期点“备份全部数据”
 
 文件说明：`index.html` 主程序，`catalog.js` 初始型号库，`exceljs.min.js` 生成 Excel 的组件（离线用），`sw.js` 离线缓存，`manifest.webmanifest` 和图标用于添加到主屏幕。
+
+## PETRJASON 销售（`xiaoshou/`）
+
+销售部门用的单独 App：客户和跟进、报价单（元/吨，按理论重量）、订单、发货登记、收款和欠款。数据只放在 `xs_*` 集合里，操作记录（`xs_log`）和授权码（`xs_kv`）也单独存，和车间的数据互不相干。现在是测试版（`xiaoshou/index.html` 里 `CLOUD_SUFFIX="_beta"`），升级正式版时删掉那一句。
