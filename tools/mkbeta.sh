@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 mkdir -p $S && git archive $B | tar -x -C $S
 git checkout -q main && git pull -q
 rm -rf beta && mkdir beta
-for f in index.html qd.js qdx.js qda.js qdbig.js scan.js catalog.js template.js exceljs.min.js sw.js manifest.webmanifest; do [ -f $S/$f ] && cp $S/$f beta/; done
+for f in index.html qd.js qdx.js qda.js qdbig.js ch.js scan.js catalog.js template.js exceljs.min.js sw.js manifest.webmanifest; do [ -f $S/$f ] && cp $S/$f beta/; done
 cp -r $S/lib beta/
 git show 9b3352d:beta/apple-touch-icon.png > beta/apple-touch-icon.png; git show 9b3352d:beta/icon-192.png > beta/icon-192.png; git show 9b3352d:beta/icon-512.png > beta/icon-512.png
 python3 - <<'PY'
