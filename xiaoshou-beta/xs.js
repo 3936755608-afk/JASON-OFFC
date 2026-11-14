@@ -557,10 +557,12 @@
   // 打字时不马上跳：拼音输入法正在拼字时不搜；停手 0.35 秒后再搜一次
   let gT = null, gComp = false;
   function gRun() { const v = gIn.value.trim(); if (v === gq && (v ? tab === "search" : tab !== "search")) return; if (v && tab !== "search") gBack = tab; gq = v; if (v) { tab = "search"; ed = null; shipEd = null; payEd = null; render() } else setTab(gBack) }
-  gIn.addEventListener("compositionstart", () => { gComp = true; clearTimeout(gT) });
-  gIn.addEventListener("compositionend", () => { gComp = false; clearTimeout(gT); gT = setTimeout(gRun, 350) });
-  gIn.addEventListener("input", e => { if (gComp || e.isComposing) return; clearTimeout(gT); gT = setTimeout(gRun, gIn.value ? 350 : 0) });
-  gIn.addEventListener("keydown", e => { if (e.isComposing) return; if (e.key === "Escape") { clearTimeout(gT); gIn.value = ""; gq = ""; setTab(gBack) } if (e.key === "Enter") { clearTimeout(gT); gRun(); gIn.blur() } });
+  // 顶部全部查询：打字时页面完全不动（不会打断输入法），按回车 / 键盘上的“搜索”才查；清空就回到原来的页面
+  gIn.addEventListener("compositionstart", () => { gComp = true });
+  gIn.addEventListener("compositionend", () => { gComp = false });
+  gIn.addEventListener("input", e => { if (gComp || e.isComposing) return; if (!gIn.value.trim() && tab === "search") { clearTimeout(gT); gT = setTimeout(gRun, 0) } });
+  gIn.addEventListener("search", () => { if (!gIn.value.trim()) gRun() });
+  gIn.addEventListener("keydown", e => { if (e.isComposing) return; if (e.key === "Escape") { clearTimeout(gT); gIn.value = ""; gq = ""; setTab(gBack) } if (e.key === "Enter") { e.preventDefault(); clearTimeout(gT); gRun(); gIn.blur() } });
   /* ---------- 更多 ---------- */
   function viewMore() {
     const it = (t, p, b) => `<div class="it"><h3>${t}</h3><p>${p}</p>${b || ""}</div>`;
@@ -634,14 +636,25 @@
   }
 
   /* ---------- 渲染 ---------- */
+  // 只换掉页面上别的部分，正在打字的搜索框本身不动（不重建、不失去焦点，输入法不会被打断）
+  function morph(o, n, keep) {
+    if (o.nodeName !== n.nodeName) return false;
+    const oc = [...o.childNodes], nc = [...n.childNodes];
+    for (let i = 0; i < Math.max(oc.length, nc.length); i++) { const a = oc[i], b = nc[i];
+      if (a && b) { if (a === keep) continue; if (a.contains && a.contains(keep)) { if (!morph(a, b, keep)) return false } else o.replaceChild(b, a) }
+      else if (b) o.appendChild(b); else if (a) { if (a.contains && a.contains(keep)) return false; o.removeChild(a) } }
+    return true;
+  }
   function render() {
     for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false");
     const old = $("msg"), om = old ? [old.textContent, old.className] : null, fq = document.activeElement && document.activeElement.id === "q", fpq = document.activeElement && document.activeElement.id === "pq";
-    $("app").innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${tab === "search" ? viewSearch() : tab === "home" ? viewHome() : tab === "cust" ? (sel ? viewCust() : viewCustList()) : (tab === "quote" || tab === "order") ? (ed ? viewEditor() : viewDocList(tab)) : tab === "acct" ? viewAcct() : tab === "price" ? viewPrice() : tab === "prod" ? viewProd() : viewMore()}</div>`;
+    const html = `<div style="display:flex;flex-direction:column;gap:12px">${tab === "search" ? viewSearch() : tab === "home" ? viewHome() : tab === "cust" ? (sel ? viewCust() : viewCustList()) : (tab === "quote" || tab === "order") ? (ed ? viewEditor() : viewDocList(tab)) : tab === "acct" ? viewAcct() : tab === "price" ? viewPrice() : tab === "prod" ? viewProd() : viewMore()}</div>`;
+    const act0 = document.activeElement, keep = (fq || fpq) && act0 && $("app").contains(act0) ? act0 : null;
+    if (keep) { const tmp = document.createElement($("app").nodeName); tmp.innerHTML = html; if (!morph($("app"), tmp, keep)) $("app").innerHTML = html } else $("app").innerHTML = html;
     if (om && $("msg")) { $("msg").textContent = om[0]; $("msg").className = om[1] }
     if (ed) paintTotals();
-    if (fq && $("q")) { const i = $("q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
-    if (fpq && $("pq")) { const i = $("pq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
+    if (!keep && fq && $("q")) { const i = $("q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
+    if (!keep && fpq && $("pq")) { const i = $("pq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
   }
   const app = $("app");
   // 列表搜索框（客户、报价、订单、账款、产品）：拼音拼字时不刷新，停手 0.3 秒后再刷新，免得每打一个字就跳
