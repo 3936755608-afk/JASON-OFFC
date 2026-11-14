@@ -554,8 +554,13 @@
         : `<div class="empty">没有找到“${esc(gq)}”。可以搜客户名、联系人、电话、单号、型号、颜色、车牌、司机、收款金额。</div>`}`;
   }
   const gIn = $("gq");
-  gIn.addEventListener("input", () => { const v = gIn.value.trim(); if (v && tab !== "search") gBack = tab; gq = v; if (v) { tab = "search"; ed = null; shipEd = null; payEd = null; render() } else setTab(gBack) });
-  gIn.addEventListener("keydown", e => { if (e.key === "Escape") { gIn.value = ""; gq = ""; setTab(gBack) } if (e.key === "Enter") gIn.blur() });
+  // 打字时不马上跳：拼音输入法正在拼字时不搜；停手 0.35 秒后再搜一次
+  let gT = null, gComp = false;
+  function gRun() { const v = gIn.value.trim(); if (v === gq && (v ? tab === "search" : tab !== "search")) return; if (v && tab !== "search") gBack = tab; gq = v; if (v) { tab = "search"; ed = null; shipEd = null; payEd = null; render() } else setTab(gBack) }
+  gIn.addEventListener("compositionstart", () => { gComp = true; clearTimeout(gT) });
+  gIn.addEventListener("compositionend", () => { gComp = false; clearTimeout(gT); gT = setTimeout(gRun, 350) });
+  gIn.addEventListener("input", e => { if (gComp || e.isComposing) return; clearTimeout(gT); gT = setTimeout(gRun, gIn.value ? 350 : 0) });
+  gIn.addEventListener("keydown", e => { if (e.isComposing) return; if (e.key === "Escape") { clearTimeout(gT); gIn.value = ""; gq = ""; setTab(gBack) } if (e.key === "Enter") { clearTimeout(gT); gRun(); gIn.blur() } });
   /* ---------- 更多 ---------- */
   function viewMore() {
     const it = (t, p, b) => `<div class="it"><h3>${t}</h3><p>${p}</p>${b || ""}</div>`;
@@ -639,10 +644,13 @@
     if (fpq && $("pq")) { const i = $("pq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
   }
   const app = $("app");
+  // 列表搜索框（客户、报价、订单、账款、产品）：拼音拼字时不刷新，停手 0.3 秒后再刷新，免得每打一个字就跳
+  let appComp = false, lqT = null;
+  app.addEventListener("compositionstart", () => { appComp = true });
+  app.addEventListener("compositionend", e => { appComp = false; const t = e.target; if (t.id === "q" || t.id === "pq") { clearTimeout(lqT); lqT = setTimeout(() => { if (t.id === "q") q = t.value; else pq = t.value; render() }, 300) } });
   app.addEventListener("input", e => {
     const t = e.target;
-    if (t.id === "q") { q = t.value; render(); return }
-    if (t.id === "pq") { pq = t.value; render(); return }
+    if (t.id === "q" || t.id === "pq") { if (appComp || e.isComposing) return; clearTimeout(lqT); lqT = setTimeout(() => { if (t.id === "q") q = t.value; else pq = t.value; render() }, 300); return }
     if (ed) {
       const tr = t.closest("tr[data-i]"); if (tr && t.dataset.f && t.dataset.f !== "color" && t.dataset.f !== "unit") { const l = ed.lines[+tr.dataset.i]; l[t.dataset.f] = t.dataset.f === "m" ? t.value.toUpperCase() : t.value; if (t.dataset.f === "price") l.man = true;
         if ((t.dataset.f === "L" || t.dataset.f === "w") && isPc(l) && !l.man) { autoPrice(l); const pi = tr.querySelector('[data-f="price"]'); if (pi) pi.value = l.price || "" }
