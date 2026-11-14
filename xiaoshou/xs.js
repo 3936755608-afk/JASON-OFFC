@@ -323,11 +323,12 @@
     if (!igEd) igEd = { d: t, price: "" };
     const unitOf = (c, col) => ig ? ig.price + custBillet(c) + custColorFee(c, col) : null;
     const pc = pcEd ? custOf(pcEd) : null;
+    if (impPlan) return viewImp();
     const cell = (v, own) => `<td class="${own ? "B" : ""}" style="${own ? "" : "color:var(--muted)"}">${n0(v)}</td>`;
     return `<div class="msg" id="msg"></div>
     <div class="cards">${card("今日铝锭价", ig ? n0(ig.price) + " 元/吨" : "未填", ig ? (ig.d === t ? "今天" : md(ig.d) + " 填的（今天还没填）") : "请在下面填", ig && ig.d === t ? "" : "warn")}${card("标准胚料加工费", n0(P.billet) + " 元/吨", "没单独定价的客户用这个")}${card("颜色", P.colors.length + " 种", "另有“胚料（不做颜色）”= 0")}${card("单独定价的客户", D.cust.filter(c => has(c.billet) || (c.cfee && Object.values(c.cfee).some(has))).length + " 个", "其余用标准价")}</div>
     <div class="side">
-      <section class="panel"><h2><span>客户定价列表</span><span class="acts"><span class="seg"><button type="button" data-pv="fee" aria-pressed="${pView === "fee"}">加工费</button><button type="button" data-pv="unit" aria-pressed="${pView === "unit"}">今日单价</button></span><button type="button" class="btn" data-price-xl="1">导出内部价格表</button></span></h2>
+      <section class="panel"><h2><span>客户定价列表</span><span class="acts"><span class="seg"><button type="button" data-pv="fee" aria-pressed="${pView === "fee"}">加工费</button><button type="button" data-pv="unit" aria-pressed="${pView === "unit"}">今日单价</button></span><button type="button" class="btn" data-price-xl="1">导出价格表</button><button type="button" class="btn primary" data-price-imp="1">导入价格表</button></span></h2>
         <div class="sub">${pView === "fee" ? "黑色粗体 = 这个客户单独定的价；灰色 = 用标准价。点一行改这个客户的定价。" : ig ? `今日单价 = 铝锭价 ${n0(ig.price)} + 胚料费 + 颜色费（元/吨）。` : "还没有铝锭价，算不出今日单价。"}</div>
         ${pc ? `<div class="panel" style="background:var(--soft)"><h2>${esc(pc.name)} 的定价 <span class="sub">空着 = 用标准价</span></h2>
           <div class="fgrid"><div class="field"><label for="pc_billet">胚料加工费（元/吨）</label><input id="pc_billet" inputmode="decimal" value="${has(pc.billet) ? pc.billet : ""}" placeholder="标准 ${n0(P.billet)}"></div>
@@ -357,6 +358,71 @@
       </div>
     </div>`;
   }
+
+  /* ---------- 导入内部价格表（Excel）：格式和“导出价格表”一样，导出的文件改完可以直接导回来 ----------
+     “加工费”表：第一列客户，第二列胚料加工费，后面每列一种颜色（元/吨）。“（标准价）”那一行 = 标准价。
+     客户格子空着或和标准价一样 = 用标准价。新的颜色、新的客户会自动加上。“铝锭价”表：日期、铝锭价。“今日单价”表只看不导。 */
+  let impPlan = null;
+  const cellV = v => v && typeof v === "object" ? ("result" in v ? v.result : "richText" in v ? v.richText.map(t => t.text).join("") : v.text ?? (v instanceof Date ? v : "")) : v;
+  const numV = v => { v = cellV(v); if (v === null || v === undefined || v === "") return null; const n = parseFloat(String(v).replace(/[,，\s元¥]/g, "")); return isFinite(n) ? n : NaN };
+  function dayV(v) { v = cellV(v); if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10); const t = String(v || "").trim(); let m = /(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/.exec(t); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`; if (typeof v === "number" && v > 30000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 864e5)); return d.toISOString().slice(0, 10) } return "" }
+  async function parsePrice(file) {
+    const XL = await loadXL(), wb = new XL.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
+    const ws = wb.getWorksheet("加工费") || wb.worksheets.find(w => !/今日单价|铝锭/.test(w.name)) || wb.worksheets[0]; if (!ws) throw new Error("没有工作表");
+    let hr = 0, cols = []; for (let r = 1; r <= Math.min(10, ws.rowCount) && !hr; r++) { const row = ws.getRow(r), c1 = String(cellV(row.getCell(1).value) || ""); if (/客户/.test(c1)) { hr = r; row.eachCell((c, i) => { if (i > 1) cols.push({ i, name: String(cellV(c.value) || "").trim() }) }) } }
+    if (!hr) throw new Error("“加工费”表第一列要有“客户”这个表头");
+    const bCol = cols.find(c => /胚料/.test(c.name) && !/不做颜色/.test(c.name)); if (!bCol) throw new Error("找不到“胚料加工费”这一列");
+    const cCols = cols.filter(c => c !== bCol && c.name && c.name !== RAW.name && !/不做颜色/.test(c.name));
+    const rows = [], bad = [];
+    for (let r = hr + 1; r <= ws.rowCount; r++) { const row = ws.getRow(r), name = String(cellV(row.getCell(1).value) || "").trim(); if (!name) continue;
+      const x = { name, std: /标准/.test(name) && /^[（(]?标准价?[）)]?$/.test(name), billet: numV(row.getCell(bCol.i).value), fees: {} };
+      if (Number.isNaN(x.billet)) bad.push(`${name} 的胚料加工费`);
+      cCols.forEach(c => { const v = numV(row.getCell(c.i).value); if (Number.isNaN(v)) bad.push(`${name} 的 ${c.name}`); else if (v !== null) x.fees[c.name] = v }); rows.push(x) }
+    if (bad.length) throw new Error("这些格子不是数字：" + bad.slice(0, 6).join("、") + (bad.length > 6 ? "……" : ""));
+    const ing = [], wi = wb.getWorksheet("铝锭价");
+    if (wi) { let h = 0, dc = 0, pcl = 0; for (let r = 1; r <= Math.min(10, wi.rowCount) && !h; r++) wi.getRow(r).eachCell((c, i) => { const t = String(cellV(c.value) || ""); if (/日期/.test(t)) { dc = i; h = r } else if (/铝锭/.test(t)) pcl = i });
+      if (h && dc && pcl) for (let r = h + 1; r <= wi.rowCount; r++) { const d = dayV(wi.getRow(r).getCell(dc).value), v = numV(wi.getRow(r).getCell(pcl).value); if (d && v > 0) ing.push({ d, price: v }) } }
+    return { colorNames: cCols.map(c => c.name), rows, ing };
+  }
+  function planPrice(x, fileName) {
+    const stdRow = x.rows.find(r => r.std), custRows = x.rows.filter(r => !r.std);
+    const colorsNew = P.colors.map(c => Object.assign({}, c)); const added = [];
+    x.colorNames.forEach(n => { if (!colorsNew.some(c => c.name === n)) { const c = { id: uid(), name: n, fee: 0 }; colorsNew.push(c); added.push(n) } });
+    const ch = [], billet = stdRow && stdRow.billet !== null ? stdRow.billet : +P.billet || 0;
+    if (billet !== (+P.billet || 0)) ch.push(`标准胚料加工费 ${n0(P.billet)} → ${n0(billet)}`);
+    if (stdRow) colorsNew.forEach(c => { const v = stdRow.fees[c.name]; if (v !== undefined && v !== +c.fee) { if (!added.includes(c.name)) ch.push(`标准 ${c.name}：${n0(c.fee)} → ${n0(v)}`); c.fee = v } });
+    added.forEach(n => ch.push(`新增颜色 ${n}：${n0((colorsNew.find(c => c.name === n) || {}).fee)}`));
+    const byName = n => colorsNew.find(c => c.name === n), custOps = [], newCust = [];
+    custRows.forEach(r => { const c = D.cust.find(v => v.name === r.name);
+      const bl = r.billet === null || r.billet === billet ? "" : r.billet, cf = {};
+      Object.entries(r.fees).forEach(([n, v]) => { const k = byName(n); if (k && v !== +k.fee) cf[k.id] = v });
+      if (!c) { newCust.push(r.name); custOps.push({ isNew: true, doc: { id: uid(), name: r.name, contact: "", phone: "", addr: "", pay: "", note: "", billet: bl, cfee: cf } }); return }
+      const keep = {}; Object.entries(c.cfee || {}).forEach(([id, v]) => { const k = colorsNew.find(z => z.id === id); if (has(v) && k && !x.colorNames.includes(k.name)) keep[id] = v });   // 文件里没有的颜色列，保留原来的
+      const cf2 = Object.assign(keep, cf);
+      if (String(has(c.billet) ? +c.billet : "") !== String(bl) || JSON.stringify(Object.entries(c.cfee || {}).filter(([, v]) => has(v)).sort()) !== JSON.stringify(Object.entries(cf2).sort())) custOps.push({ isNew: false, id: c.id, name: c.name, patch: { billet: bl, cfee: cf2 } }) });
+    const ingOps = x.ing.filter(i => { const o = D.ingot.find(v => v.d === i.d); return !o || +o.price !== i.price });
+    return { fileName, colors: colorsNew, billet, ch, custOps, newCust, ingOps, nCust: custRows.length, nIng: x.ing.length };
+  }
+  function viewImp() {
+    const p = impPlan, upd = p.custOps.filter(o => !o.isNew);
+    const items = [...p.ch, ...(p.newCust.length ? [`新增客户 ${p.newCust.length} 个：${p.newCust.join("、")}`] : []), ...(upd.length ? [`改定价的客户 ${upd.length} 个：${upd.map(o => o.name).join("、")}`] : []), ...(p.ingOps.length ? [`铝锭价 ${p.ingOps.length} 天：${p.ingOps.slice(0, 8).map(i => md(i.d) + " " + n0(i.price)).join("、")}${p.ingOps.length > 8 ? "……" : ""}`] : [])];
+    return `<div class="msg" id="msg"></div><section class="panel" style="max-width:860px"><h2>导入价格表 <span class="sub">${esc(p.fileName)}</span></h2>
+      <div class="sub">文件里有 ${p.nCust} 个客户、${p.colors.length} 种颜色${p.nIng ? "、" + p.nIng + " 天铝锭价" : ""}。客户格子空着或和标准价一样的，算“用标准价”。文件里没有的客户不动。</div>
+      ${items.length ? `<div class="list">${items.map(t => `<div class="fl">${esc(t)}</div>`).join("")}</div>` : `<div class="empty">和现在的价格完全一样，没有要改的。</div>`}
+      <div class="acts">${items.length ? `<button type="button" class="btn primary" data-imp-ok="1">确认导入</button>` : ""}<button type="button" class="btn" data-imp-no="1">取消</button></div>
+      <div class="sub">导入只改价格表，已经存了的报价单、订单的单价不变。</div></section>`;
+  }
+  async function applyImp() {
+    const p = impPlan, items = ["导入价格表：" + p.fileName, ...p.ch.slice(0, 20), ...(p.newCust.length ? ["新增客户：" + p.newCust.join("、")] : []), ...(p.custOps.filter(o => !o.isNew).length ? [`改 ${p.custOps.filter(o => !o.isNew).length} 个客户的定价`] : []), ...(p.ingOps.length ? [`铝锭价 ${p.ingOps.length} 天`] : [])];
+    if (await act(items, async () => {
+      await KV.set("colors", p.colors.map(c => ({ id: c.id, name: c.name, fee: +c.fee || 0 }))); await KV.set("billet", p.billet);
+      for (const o of p.custOps) { if (o.isNew) await ST.cust.put(o.doc); else await ST.cust.update(o.id, o.patch) }
+      if (p.ingOps.length) await ST.ingot.putMany(p.ingOps.map(i => ({ id: i.d, d: i.d, price: i.price, t: Date.now() })));
+    }, "已导入价格表。")) { impPlan = null; stdEd = null; render() }
+  }
+  const impFile = document.createElement("input"); impFile.type = "file"; impFile.accept = ".xlsx"; impFile.hidden = true; document.body.appendChild(impFile);
+  impFile.addEventListener("change", async () => { const f = impFile.files && impFile.files[0]; impFile.value = ""; if (!f) return;
+    try { impPlan = planPrice(await parsePrice(f), f.name); render(); window.scrollTo(0, 0) } catch (e) { console.error(e); msg("读不了这个文件：" + (e && e.message || "格式不对") + "。可以先点“导出价格表”，在导出的文件上改。", "err") } });
   async function xlPrice() {
     try { const XL = await loadXL(), wb = new XL.Workbook(), t = today(), ig = ingotOn(t), cs = colors();
       const mk = (name, f, cols, first) => { const ws = wb.addWorksheet(name); const h = ws.addRow(["客户", ...(first ? [first] : []), ...cols.map(c => c.name)]); h.eachCell(c => { c.font = FH; c.fill = fill("A3122A"); c.border = BD; c.alignment = { horizontal: "center", wrapText: true } }); h.height = 30;
@@ -366,7 +432,8 @@
       if (ig) mk("今日单价", (c, col) => ig.price + (c ? custBillet(c) : +P.billet || 0) + (col === null ? 0 : (c ? custColorFee(c, col) : (col === "raw" ? 0 : +(P.colors.find(k => k.id === col) || {}).fee || 0))), cs);
       const ws = wb.addWorksheet("铝锭价"); const h = ws.addRow(["日期", "铝锭价(元/吨)"]); h.eachCell(c => { c.font = FH; c.fill = fill("A3122A"); c.border = BD });
       D.ingot.slice().sort((a, b) => b.d > a.d ? 1 : -1).forEach(x => { const r = ws.addRow([x.d, x.price]); r.eachCell(c => { c.font = F; c.border = BD }); r.getCell(2).numFmt = "#,##0" }); ws.getColumn(1).width = 14; ws.getColumn(2).width = 16;
-      await shareFile(new Blob([await wb.xlsx.writeBuffer()], { type: XT }), `内部价格表_${mmdd(t)}.xlsx`); msg("已导出内部价格表（只给内部看）。", "ok");
+      const wn = wb.addWorksheet("说明"); ["这是内部价格表，只给内部看。改好后可以在销售 App“价格”页点“导入价格表”导回去。", "“加工费”表：第一列客户，第二列胚料加工费，后面每列一种颜色（元/吨）。“（标准价）”那一行是标准价。", "客户的格子空着或者和标准价一样 = 这个客户用标准价。", "要加新颜色：在“加工费”表最后加一列，表头写颜色名称。要加新客户：加一行，第一列写客户名称。", "“铝锭价”表：日期、铝锭价（元/吨），导入时会更新这些日子的铝锭价。", "“今日单价”表是算出来给你看的，导入时不读。"].forEach((t, i) => { wn.getCell("A" + (i + 1)).value = t; wn.getCell("A" + (i + 1)).font = F }); wn.getColumn(1).width = 100;
+      await shareFile(new Blob([await wb.xlsx.writeBuffer()], { type: XT }), `内部价格表_${mmdd(t)}.xlsx`); msg("已导出价格表。改好后可以点“导入价格表”导回来。", "ok");
     } catch (e) { console.error(e); msg("导出失败，请再试一次。", "err") }
   }
 
@@ -572,6 +639,9 @@
       if (!ch.length) { msg("没有改动。"); return }
       if (await act(ch, async () => { await KV.set("billet", bv || 0); await KV.set("colors", cl) }, "已保存标准加工费。")) { stdEd = null; render() } return }
     if (ds.priceXl) { xlPrice(); return }
+    if (ds.priceImp) { impFile.click(); return }
+    if (ds.impOk) { await applyImp(); return }
+    if (ds.impNo) { impPlan = null; render(); return }
     // 更多
     if (b.id === "mLog") { if (logList) { logList = null; render() } else { try { logList = await Cloud.boss.log(30) } catch (err) { msg("读取操作记录失败。", "err") } render() } return }
     if (b.id === "mUndo") { Cloud.boss.undoLast().then(async t2 => { await loadAll(); logList = logList ? await Cloud.boss.log(30) : null; render(); msg(t2, /^已撤销/.test(t2) ? "ok" : "err") }).catch(() => { }); return }
