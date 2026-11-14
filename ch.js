@@ -345,7 +345,7 @@ function stockRows(){
 }
 function renderStock(){
   $("stockInfo").textContent=stock.length?`${stock.length} 个规格`:"";
-  if(!stock.length){$("stockWrap").innerHTML=`<div class="empty">这一天还没有库存。点右上角“导入当天库存”，选“车间盘点”导出的 Excel 或备份文件。</div>`;return}
+  if(!stock.length){$("stockWrap").innerHTML=`<div class="empty">这一天还没有出货库存。点上面的“读取车间盘点库存”（会读这一天车间盘点里已入库的货），或者“导入文件”。</div>`;return}
   const rows=stockRows();
   const wrap=$("stockWrap"),st=wrap.querySelector(".grid")?wrap.scrollTop:0;
   if(!rows.length){wrap.innerHTML=`<div class="empty">没有符合条件的型号。</div>`;return}
