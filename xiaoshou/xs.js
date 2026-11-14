@@ -27,8 +27,8 @@
   if (BETA) { $("title").innerHTML = 'PETRJASON 销售<small>测试版</small>'; document.title = "PETRJASON 销售（测试版）" }
 
   /* ---------- 数据 ---------- */
-  const ST = { cust: Cloud.store("xs_cust"), follow: Cloud.store("xs_follow"), quote: Cloud.store("xs_quote"), order: Cloud.store("xs_order"), ship: Cloud.store("xs_ship"), pay: Cloud.store("xs_pay"), ingot: Cloud.store("xs_ingot") };
-  const D = { cust: [], follow: [], quote: [], order: [], ship: [], pay: [], ingot: [] };
+  const ST = { cust: Cloud.store("xs_cust"), follow: Cloud.store("xs_follow"), quote: Cloud.store("xs_quote"), order: Cloud.store("xs_order"), ship: Cloud.store("xs_ship"), pay: Cloud.store("xs_pay"), ingot: Cloud.store("xs_ingot"), prod: Cloud.store("xs_prod") };
+  const D = { cust: [], follow: [], quote: [], order: [], ship: [], pay: [], ingot: [], prod: [] };
   const KV = Cloud.kv("xs_kv"), P = { billet: 0, colors: [] };
   async function loadAll() {
     try { const ks = Object.keys(ST); const vs = await Promise.all(ks.map(k => ST[k].all())); ks.forEach((k, i) => D[k] = vs[i]) }
@@ -77,7 +77,7 @@
 
   // 型号库：基础型号库 + 用过的规格；上次单价：同一客户同规格 → 同一客户同型号 → 任何客户同规格
   function catalog() {
-    const m = new Map(); (window.BASE_CATALOG || []).forEach(x => m.set(x.m + "|" + x.L + "|" + x.w, { m: x.m, L: x.L, w: x.w }));
+    const m = new Map(); (D.prod.length ? D.prod : (window.BASE_CATALOG || [])).forEach(x => m.set(x.m + "|" + x.L + "|" + x.w, { m: x.m, L: +x.L, w: +x.w }));
     [...D.quote, ...D.order].forEach(d => (d.lines || []).forEach(l => { if (l.m && l.L && l.w) m.set(l.m + "|" + l.L + "|" + l.w, { m: l.m, L: +l.L, w: +l.w }) }));
     return [...m.values()];
   }
@@ -95,11 +95,12 @@
     cust: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.8 3 2.6 3.5 5.2"/>',
     quote: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
     order: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+    prod: '<path d="M4 7l8-4 8 4-8 4z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/>',
     price: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.5"/>',
     acct: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
     more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
   };
-  const TABS = [["home", "首页"], ["cust", "客户"], ["quote", "报价"], ["order", "订单"], ["price", "价格"], ["acct", "账款"], ["more", "更多"]];
+  const TABS = [["home", "首页"], ["cust", "客户"], ["quote", "报价"], ["order", "订单"], ["prod", "产品"], ["price", "价格"], ["acct", "账款"], ["more", "更多"]];
   $("bar").innerHTML = `<div class="in">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${t}</button>`).join("")}</div>`;
   let tab = LS.get("xs_tab", "home"), sel = null, ed = null, armDel = null, logList = null, q = "", qf = "all", shipEd = null, payEd = null, stdEd = null, pcEd = null, pView = "fee", igEd = null;
   function setTab(t, s) { if (t !== "search" && $("gq") && $("gq").value) { $("gq").value = ""; gq = "" } tab = t; sel = s || null; ed = null; shipEd = null; payEd = null; armDel = null; stdEd = null; pcEd = t === "price" && s ? s : null; LS.set("xs_tab", t); for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"); render(); window.scrollTo(0, 0) }
@@ -359,6 +360,102 @@
     </div>`;
   }
 
+
+  /* ---------- 产品（型号和支重表）：规格 = 型号 + 长度 + 理论支重；可从“产品大数据库”Excel 导入，只取型号和支重 ---------- */
+  const specKey = (m, L, w) => norm(m) + "|" + (+L) + "|" + (+w);
+  const bandOf = w => { w = +w; return w < 0.15 ? "<0.15" : w < 0.2 ? "0.15–0.20" : w < 0.25 ? "0.20–0.25" : w < 0.3 ? "0.25–0.30" : w < 0.4 ? "0.30–0.40" : w < 0.6 ? "0.40–0.60" : "≥0.60" };
+  let pq = "", pModel = null, pEdit = null, prodPlan = null;
+  function specSales(m, L, w) {   // 这个规格（L/w 为空 = 整个型号）在销售里的情况
+    const k = norm(m), mt = l => norm(l.m) === k && (L == null || (+l.L === +L && +l.w === +w));
+    const ords = D.order.filter(o => (o.lines || []).some(mt)), sh = D.ship.flatMap(s => (s.lines || []).filter(mt).map(l => ({ s, l })));
+    const custs = [...new Set([...ords.map(o => o.cust), ...D.quote.filter(q => (q.lines || []).some(mt)).map(q => q.cust)])];
+    const last = [...D.order, ...D.quote].filter(d => (d.lines || []).some(mt)).sort((a, b) => b.d > a.d ? 1 : -1)[0];
+    const ll = last ? last.lines.find(mt) : null;
+    return { nOrd: ords.length, shQ: sum(sh, x => +x.l.q), shKg: sum(sh, x => kgOf(x.l)), shAmt: sum(sh, x => amtOf(x.l)), custs, last: ll ? { d: last.d, cust: last.cust, price: ll.price, unit: unitTxt(ll) } : null };
+  }
+  function viewProd() {
+    if (prodPlan) return viewProdImp();
+    const groups = new Map(); D.prod.forEach(x => { const k = norm(x.m); (groups.get(k) || groups.set(k, { m: x.m, specs: [] }).get(k)).specs.push(x) });
+    if (pModel) { const g = groups.get(norm(pModel)); if (g) return viewModel(g); pModel = null }
+    const k = norm(pq), list = [...groups.values()].filter(g => !k || norm(g.m).includes(k)).sort((a, b) => a.m < b.m ? -1 : 1);
+    return `<div class="msg" id="msg"></div>
+    <div class="cards">${card("型号", groups.size + " 个")}${card("规格", D.prod.length + " 个", "型号 + 长度 + 理论支重")}${card("卖过的型号", [...groups.values()].filter(g => specSales(g.m).nOrd).length + " 个", "有订单的")}${card("产品表来源", D.prod.length ? "已导入" : "未导入", D.prod.length ? "" : "报价搜型号暂时用基础型号库")}</div>
+    <section class="panel"><h2><span>产品型号和支重 <span class="sub">${list.length} 个型号</span></span><span class="acts"><button type="button" class="btn" data-prod-new="1">＋ 加规格</button><button type="button" class="btn" data-prod-xl="1">导出产品表</button><button type="button" class="btn primary" data-prod-imp="1">导入产品大数据</button></span></h2>
+      <div class="tools"><input class="q" id="pq" placeholder="搜型号，例如 1021" value="${esc(pq)}" autocomplete="off" spellcheck="false" style="text-transform:uppercase"></div>
+      ${pEdit && pEdit.isNew ? prodForm() : ""}
+      ${list.length ? `<div class="tw" style="max-height:calc(100vh - 360px)"><table class="g"><thead><tr><th>型号</th><th>规格数</th><th>长度(米)</th><th>理论支重</th><th>支重区间</th><th>订单</th><th>已发(吨)</th></tr></thead><tbody>${list.slice(0, 400).map(g => { const ls = [...new Set(g.specs.map(x => +x.L))].sort((a, b) => a - b), ws = g.specs.map(x => +x.w), st = specSales(g.m); return `<tr class="click" data-pm="${esc(g.m)}"><td class="tl B">${esc(g.m)}</td><td>${g.specs.length}</td><td class="L">${ls.join(" / ")}</td><td class="W">${Math.min(...ws) === Math.max(...ws) ? Math.min(...ws) : Math.min(...ws) + "–" + Math.max(...ws)}</td><td class="ct">${[...new Set(g.specs.map(x => x.band || bandOf(x.w)))].join("、")}</td><td>${st.nOrd || ""}</td><td>${st.shKg ? n3(st.shKg / 1000) : ""}</td></tr>` }).join("")}</tbody></table></div>${list.length > 400 ? `<div class="sub">只显示前 400 个，请输入型号搜索。</div>` : ""}`
+        : `<div class="empty">${D.prod.length ? "没有找到这个型号。" : "还没有产品表。点右上角“导入产品大数据”，选你们的「产品大数据库」Excel（只导型号和支重，不导库存）。"}</div>`}</section>`;
+  }
+  function prodForm() { const x = pEdit; return `<div class="panel" style="background:var(--soft)"><h2>${x.isNew ? "加一个规格" : "改规格"}</h2><div class="fgrid">
+      <div class="field"><label for="pf_m">型号 *</label><input id="pf_m" value="${esc(x.m || "")}" style="text-transform:uppercase" autocomplete="off"></div><div class="field"><label for="pf_L">长度(米) *</label><input id="pf_L" inputmode="decimal" value="${x.L ?? ""}"></div>
+      <div class="field"><label for="pf_w">理论支重(6米) *</label><input id="pf_w" inputmode="decimal" value="${x.w ?? ""}"></div><div class="field"><label for="pf_note">备注</label><input id="pf_note" value="${esc(x.note || "")}" autocomplete="off"></div></div>
+      <div class="acts"><button type="button" class="btn primary" data-prod-save="1">保存</button><button type="button" class="btn" data-prod-cancel="1">取消</button>${x.isNew ? "" : `<button type="button" class="btn danger" data-prod-del="${x.id}">${armDel === "g" + x.id ? "再点一次确认删除" : "删除这个规格"}</button>`}</div></div>` }
+  function viewModel(g) {
+    const st = specSales(g.m), specs = g.specs.slice().sort((a, b) => a.L - b.L || a.w - b.w);
+    return `<div class="msg" id="msg"></div><div class="tools"><button type="button" class="btn" data-pm-back="1">← 产品列表</button><h2 style="margin:0;font-size:22px">${esc(g.m)}</h2><span class="sub">${specs.length} 个规格</span><div class="grow"></div><button type="button" class="btn" data-prod-new="${esc(g.m)}">＋ 加规格</button></div>
+    <div class="cards">${card("订单", st.nOrd + " 张")}${card("已发", n0(st.shQ) + " 支", n3(st.shKg / 1000) + " 吨 · " + yuan(st.shAmt))}${card("买过的客户", st.custs.length + " 个", st.custs.slice(0, 4).map(custName).map(esc).join("、"))}${card("最近单价", st.last ? n0(st.last.price) + " " + st.last.unit : "—", st.last ? md(st.last.d) + " " + esc(custName(st.last.cust)) : "")}</div>
+    ${pEdit && !pEdit.isNew ? prodForm() : ""}
+    <section class="panel"><h2>规格</h2><div class="tw"><table class="g"><thead><tr><th>长度(米)</th><th>理论支重(6米)</th><th>每支理论重量(kg)</th><th>每吨约多少支</th><th>支重区间</th><th>订单</th><th>已发(支)</th><th>最近单价</th><th>备注</th><th></th></tr></thead><tbody>${specs.map(x => { const s2 = specSales(x.m, x.L, x.w), pk = x.w / 6 * x.L; return `<tr><td class="L">${x.L}</td><td class="W">${x.w}</td><td>${pk.toFixed(4)}</td><td>${pk > 0 ? n0(1000 / pk) : ""}</td><td class="ct">${esc(x.band || bandOf(x.w))}</td><td>${s2.nOrd || ""}</td><td>${s2.shQ ? n0(s2.shQ) : ""}</td><td>${s2.last ? n0(s2.last.price) + " " + s2.last.unit : ""}</td><td class="tl">${esc(x.note || "")}</td>
+      <td class="ct"><button type="button" class="x" style="color:inherit" data-prod-edit="${x.id}">改</button> <button type="button" class="x" style="color:inherit" data-prod-quote="${x.id}">报价</button></td></tr>` }).join("")}</tbody></table></div></section>
+    ${st.custs.length ? `<section class="panel"><h2>买过这个型号的客户</h2><div class="list">${st.custs.map(cid => { const s3 = D.ship.filter(x => x.cust === cid).flatMap(x => x.lines.filter(l => norm(l.m) === norm(g.m))); return `<div class="li" data-go="cust" data-id="${cid}"><div><div class="n">${esc(custName(cid))}</div></div><div class="r">${s3.length ? n0(sum(s3, l => +l.q)) + " 支 · " + n3(sum(s3, kgOf) / 1000) + " 吨" : "只报过价 / 未发货"}</div></div>` }).join("")}</div></section>` : ""}`;
+  }
+
+  /* ---------- 读 Excel：先用 ExcelJS；文件里有图表等 ExcelJS 读不了时，用下面这个只读数据的小读取器（只取每个格子的值） ---------- */
+  async function unzipXlsx(buf) {
+    const dv = new DataView(buf); let e = buf.byteLength - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--; if (e < 0) throw new Error("不是 Excel（xlsx）文件");
+    const n = dv.getUint16(e + 10, true), files = {}; let p = dv.getUint32(e + 16, true);
+    for (let i = 0; i < n; i++) { const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true); files[new TextDecoder().decode(new Uint8Array(buf, p + 46, nl))] = { method, csize, off }; p += 46 + nl + xl + cl }
+    return async name => { const f = files[name]; if (!f) return null; const st = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true), raw = new Uint8Array(buf, st, f.csize);
+      const out = f.method === 0 ? raw : new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()); return new TextDecoder().decode(out) };
+  }
+  async function readXlsxLite(buf) {
+    const get = await unzipXlsx(buf), DP = new DOMParser(), X = t => DP.parseFromString(t, "application/xml"), ss = [];
+    const sst = await get("xl/sharedStrings.xml"); if (sst) for (const si of X(sst).getElementsByTagName("si")) ss.push([...si.getElementsByTagName("t")].map(t => t.textContent).join(""));
+    const rmap = {}; for (const r of X(await get("xl/_rels/workbook.xml.rels")).getElementsByTagName("Relationship")) rmap[r.getAttribute("Id")] = r.getAttribute("Target");
+    const worksheets = [];
+    for (const sh of X(await get("xl/workbook.xml")).getElementsByTagName("sheet")) {
+      let t = rmap[sh.getAttribute("r:id")] || ""; t = t.replace(/^\//, ""); if (!t.startsWith("xl/")) t = "xl/" + t;
+      const txt = await get(t), rows = []; if (txt) for (const row of X(txt).getElementsByTagName("row")) { const a = []; for (const c of row.getElementsByTagName("c")) { const col = c.getAttribute("r").replace(/\d+/g, "").split("").reduce((x, ch) => x * 26 + ch.charCodeAt(0) - 64, 0); const tp = c.getAttribute("t"), v = c.getElementsByTagName("v")[0];
+        a[col] = tp === "s" ? (v ? ss[+v.textContent] : null) : tp === "inlineStr" ? [...c.getElementsByTagName("t")].map(x => x.textContent).join("") : tp === "str" || tp === "e" ? (v ? v.textContent : null) : tp === "b" ? (v ? v.textContent === "1" : null) : (v ? +v.textContent : null) } rows[+row.getAttribute("r")] = a }
+      worksheets.push({ name: sh.getAttribute("name"), rowCount: rows.length ? rows.length - 1 : 0, getRow: r => { const a = rows[r] || []; return { getCell: i => ({ value: a[i] ?? null }), eachCell: fn => a.forEach((v, i) => { if (v !== null && v !== undefined && v !== "") fn({ value: v }, i) }) } } });
+    }
+    return { worksheets, getWorksheet: n => worksheets.find(w => w.name === n) };
+  }
+  async function openWb(file) { const buf = await file.arrayBuffer(); try { const XL = await loadXL(), wb = new XL.Workbook(); await wb.xlsx.load(buf.slice(0)); return wb } catch (e) { console.warn("ExcelJS 读不了，改用简单读取：", e); return readXlsxLite(buf) } }
+  async function parseProd(file) {
+    const wb = await openWb(file);
+    const sheets = [wb.getWorksheet("产品数据库"), ...wb.worksheets].filter(Boolean);
+    for (const ws of sheets) { let hr = 0, c = {};
+      for (let r = 1; r <= Math.min(10, ws.rowCount) && !hr; r++) { const x = {}; ws.getRow(r).eachCell((cell, i) => { const t = String(cellV(cell.value) || "").trim(); if (/^型号$|^型号\(统一\)$/.test(t) && !x.m) x.m = i; else if (/^长度/.test(t) && !x.L) x.L = i; else if (/理论支重|^支重$/.test(t) && !/区间|范围/.test(t) && !x.w) x.w = i; else if (/支重区间/.test(t)) x.b = i }); if (x.m && x.L && x.w) { hr = r; c = x } }
+      if (!hr) continue;
+      const out = new Map(), bad = [];
+      for (let r = hr + 1; r <= ws.rowCount; r++) { const row = ws.getRow(r), m = String(cellV(row.getCell(c.m).value) || "").trim().toUpperCase(); if (!m || /合计/.test(m)) continue;
+        const L = numV(row.getCell(c.L).value), w = numV(row.getCell(c.w).value); if (!(L > 0) || !(w > 0)) { bad.push(r); continue }
+        const k = specKey(m, L, w); if (!out.has(k)) out.set(k, { id: k, m, L, w, band: c.b ? String(cellV(row.getCell(c.b).value) || "").trim() || bandOf(w) : bandOf(w) }) }
+      if (out.size) return { sheet: ws.name, specs: [...out.values()], bad: bad.length };
+    }
+    throw new Error("找不到“型号、长度、理论支重”这几列");
+  }
+  function viewProdImp() {
+    const p = prodPlan, have = new Set(D.prod.map(x => x.id)), nw = p.specs.filter(x => !have.has(x.id)), models = new Set(p.specs.map(x => norm(x.m)));
+    return `<div class="msg" id="msg"></div><section class="panel" style="max-width:860px"><h2>导入产品大数据 <span class="sub">${esc(p.name)} ·「${esc(p.sheet)}」表</span></h2>
+      <div class="list"><div class="fl">文件里有 ${models.size} 个型号、${p.specs.length} 个规格（型号 + 长度 + 理论支重）${p.bad ? `；${p.bad} 行长度或支重不是数字，跳过` : ""}。</div>
+        <div class="fl">新的规格 <b>${nw.length}</b> 个${nw.length ? "：" + esc(nw.slice(0, 12).map(x => x.m + " " + x.L + "米 " + x.w).join("、")) + (nw.length > 12 ? "……" : "") : ""}</div>
+        <div class="fl">已经有的 ${p.specs.length - nw.length} 个，只更新支重区间，备注不动。</div>
+        <div class="fl">只导型号、长度、理论支重、支重区间；文件里的库存、出货等车间数据不导入。</div></div>
+      <div class="acts">${nw.length || p.specs.some(x => { const o = D.prod.find(y => y.id === x.id); return o && o.band !== x.band }) ? `<button type="button" class="btn primary" data-prod-imp-ok="1">确认导入</button>` : `<span class="sub">和现在的产品表一样，没有要改的。</span>`}<button type="button" class="btn" data-prod-imp-no="1">取消</button></div></section>`;
+  }
+  async function xlProd() {
+    try { const XL = await loadXL(), wb = new XL.Workbook(), ws = wb.addWorksheet("产品数据库");
+      const h = ws.addRow(["型号", "长度(米)", "理论支重", "每支理论重量(kg)", "支重区间", "备注"]); h.eachCell(c => { c.font = FH; c.fill = fill("A3122A"); c.border = BD; c.alignment = { horizontal: "center" } });
+      D.prod.slice().sort((a, b) => a.m < b.m ? -1 : a.m > b.m ? 1 : a.L - b.L || a.w - b.w).forEach((x, i) => { const r = i + 2, row = ws.addRow([x.m, +x.L, +x.w, { formula: `C${r}/6*B${r}`, result: x.w / 6 * x.L }, x.band || bandOf(x.w), x.note || ""]); row.eachCell({ includeEmpty: true }, c => { c.font = F; c.border = BD }); row.getCell(2).numFmt = "0.00"; row.getCell(3).numFmt = "0.000"; row.getCell(4).numFmt = "0.0000" });
+      [16, 10, 10, 16, 12, 24].forEach((w, i) => ws.getColumn(i + 1).width = w); ws.views = [{ state: "frozen", ySplit: 1 }]; ws.autoFilter = `A1:F${D.prod.length + 1}`;
+      await shareFile(new Blob([await wb.xlsx.writeBuffer()], { type: XT }), `产品型号支重表_${mmdd(today())}.xlsx`); msg("已导出产品表（可以改好后再导入）。", "ok");
+    } catch (e) { console.error(e); msg("导出失败，请再试一次。", "err") }
+  }
+  const prodFile = document.createElement("input"); prodFile.type = "file"; prodFile.accept = ".xlsx"; prodFile.hidden = true; document.body.appendChild(prodFile);
+  prodFile.addEventListener("change", async () => { const f = prodFile.files && prodFile.files[0]; prodFile.value = ""; if (!f) return;
+    try { prodPlan = Object.assign(await parseProd(f), { name: f.name }); render(); window.scrollTo(0, 0) } catch (e) { console.error(e); msg("读不了这个文件：" + (e && e.message || "格式不对") + "。", "err") } });
   /* ---------- 导入内部价格表（Excel）：格式和“导出价格表”一样，导出的文件改完可以直接导回来 ----------
      “加工费”表：第一列客户，第二列胚料加工费，后面每列一种颜色（元/吨）。“（标准价）”那一行 = 标准价。
      客户格子空着或和标准价一样 = 用标准价。新的颜色、新的客户会自动加上。“铝锭价”表：日期、铝锭价。“今日单价”表只看不导。 */
@@ -367,7 +464,7 @@
   const numV = v => { v = cellV(v); if (v === null || v === undefined || v === "") return null; const n = parseFloat(String(v).replace(/[,，\s元¥]/g, "")); return isFinite(n) ? n : NaN };
   function dayV(v) { v = cellV(v); if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10); const t = String(v || "").trim(); let m = /(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/.exec(t); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`; if (typeof v === "number" && v > 30000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 864e5)); return d.toISOString().slice(0, 10) } return "" }
   async function parsePrice(file) {
-    const XL = await loadXL(), wb = new XL.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
+    const wb = await openWb(file);
     const ws = wb.getWorksheet("加工费") || wb.worksheets.find(w => !/今日单价|铝锭/.test(w.name)) || wb.worksheets[0]; if (!ws) throw new Error("没有工作表");
     let hr = 0, cols = []; for (let r = 1; r <= Math.min(10, ws.rowCount) && !hr; r++) { const row = ws.getRow(r), c1 = String(cellV(row.getCell(1).value) || ""); if (/客户/.test(c1)) { hr = r; row.eachCell((c, i) => { if (i > 1) cols.push({ i, name: String(cellV(c.value) || "").trim() }) }) } }
     if (!hr) throw new Error("“加工费”表第一列要有“客户”这个表头");
@@ -443,6 +540,7 @@
     const k = norm(gq), hit = t => norm(t).includes(k), lt = ls => (ls || []).map(l => l.m + " " + colorName(l.color)).join(" ");
     const sortD = a => a.sort((x, y) => y.d > x.d ? 1 : y.d < x.d ? -1 : (y.t || 0) - (x.t || 0));
     const G = [
+      ["产品型号", [...new Set(D.prod.filter(x => hit(x.m + " " + (x.note || ""))).map(x => x.m))].sort().map(m => { const sp = D.prod.filter(x => x.m === m); return `<div class="li" data-pm-go="${esc(m)}"><div><div class="n">${esc(m)}</div><div class="sub">${sp.length} 个规格 · ${[...new Set(sp.map(x => +x.L))].sort((a, b) => a - b).join(" / ")} 米 · 支重 ${esc([...new Set(sp.map(x => x.w))].sort((a, b) => a - b).join("、"))}</div></div><div class="r"></div></div>` })],
       ["客户", D.cust.filter(c => hit([c.name, c.contact, c.phone, c.addr, c.pay, c.note].join(" "))).map(c => { const a = account(c.id); return `<div class="li" data-go="cust" data-id="${c.id}"><div><div class="n">${esc(c.name)}</div><div class="sub">${esc([c.contact, c.phone, c.addr].filter(Boolean).join(" · "))}</div></div><div class="r">${a.owe > 0.005 ? "欠 " + yuan(a.owe) : ""}</div></div>` })],
       ["订单", sortD(D.order.filter(o => hit([o.no, custName(o.cust), o.note, lt(o.lines)].join(" ")))).map(o => { const st = orderState(o); return `<div class="li" data-go="order" data-id="${o.id}"><div><div class="n"><span class="d">${esc(o.no)}</span> ${esc(custName(o.cust))}</div><div class="sub">${md(o.d)} · ${esc((o.lines || []).map(l => l.m).join("、"))}</div></div><div class="r">${chip(st[0], st[1])} ${yuan(linesAmt(o.lines))}</div></div>` })],
       ["报价单", sortD(D.quote.filter(x => hit([x.no, custName(x.cust), x.note, lt(x.lines)].join(" ")))).map(x => `<div class="li" data-go="quote" data-id="${x.id}"><div><div class="n"><span class="d">${esc(x.no)}</span> ${esc(custName(x.cust))}</div><div class="sub">${md(x.d)} · ${esc((x.lines || []).map(l => l.m).join("、"))}</div></div><div class="r">${x.order ? chip("已转订单", "done") : ""} ${yuan(linesAmt(x.lines))}</div></div>`)],
@@ -533,16 +631,18 @@
   /* ---------- 渲染 ---------- */
   function render() {
     for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false");
-    const old = $("msg"), om = old ? [old.textContent, old.className] : null, fq = document.activeElement && document.activeElement.id === "q";
-    $("app").innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${tab === "search" ? viewSearch() : tab === "home" ? viewHome() : tab === "cust" ? (sel ? viewCust() : viewCustList()) : (tab === "quote" || tab === "order") ? (ed ? viewEditor() : viewDocList(tab)) : tab === "acct" ? viewAcct() : tab === "price" ? viewPrice() : viewMore()}</div>`;
+    const old = $("msg"), om = old ? [old.textContent, old.className] : null, fq = document.activeElement && document.activeElement.id === "q", fpq = document.activeElement && document.activeElement.id === "pq";
+    $("app").innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${tab === "search" ? viewSearch() : tab === "home" ? viewHome() : tab === "cust" ? (sel ? viewCust() : viewCustList()) : (tab === "quote" || tab === "order") ? (ed ? viewEditor() : viewDocList(tab)) : tab === "acct" ? viewAcct() : tab === "price" ? viewPrice() : tab === "prod" ? viewProd() : viewMore()}</div>`;
     if (om && $("msg")) { $("msg").textContent = om[0]; $("msg").className = om[1] }
     if (ed) paintTotals();
     if (fq && $("q")) { const i = $("q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
+    if (fpq && $("pq")) { const i = $("pq"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
   }
   const app = $("app");
   app.addEventListener("input", e => {
     const t = e.target;
     if (t.id === "q") { q = t.value; render(); return }
+    if (t.id === "pq") { pq = t.value; render(); return }
     if (ed) {
       const tr = t.closest("tr[data-i]"); if (tr && t.dataset.f && t.dataset.f !== "color" && t.dataset.f !== "unit") { const l = ed.lines[+tr.dataset.i]; l[t.dataset.f] = t.dataset.f === "m" ? t.value.toUpperCase() : t.value; if (t.dataset.f === "price") l.man = true;
         if ((t.dataset.f === "L" || t.dataset.f === "w") && isPc(l) && !l.man) { autoPrice(l); const pi = tr.querySelector('[data-f="price"]'); if (pi) pi.value = l.price || "" }
@@ -567,7 +667,7 @@
   });
   app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "lnQ") { const b = $("lnRes").querySelector("[data-spec]"); if (b) { e.preventDefault(); b.click() } } });
   app.addEventListener("click", async e => {
-    const t = e.target, b = t.closest("button, [data-go], [data-stmt], [data-pc]"); if (!b) return;
+    const t = e.target, b = t.closest("button, [data-go], [data-stmt], [data-pc], [data-pm], [data-pm-go]"); if (!b) return;
     const ds = b.dataset;
     if (ds.go) { if (ds.go === "quote" || ds.go === "order") { setTab(ds.go); openDoc(ds.go, ds.id); render() } else setTab(ds.go, ds.id); return }
     if (ds.stmt !== undefined) { setTab("acct", ds.stmt); return }
@@ -639,6 +739,27 @@
       if (!ch.length) { msg("没有改动。"); return }
       if (await act(ch, async () => { await KV.set("billet", bv || 0); await KV.set("colors", cl) }, "已保存标准加工费。")) { stdEd = null; render() } return }
     if (ds.priceXl) { xlPrice(); return }
+    // 产品
+    if (ds.pmGo) { setTab("prod"); pModel = ds.pmGo; render(); return }
+    if (ds.pm) { pModel = ds.pm; pEdit = null; render(); window.scrollTo(0, 0); return }
+    if (ds.pmBack) { pModel = null; pEdit = null; render(); return }
+    if (ds.prodNew !== undefined) { pEdit = { isNew: true, m: ds.prodNew || "" }; render(); setTimeout(() => { const i = $(ds.prodNew ? "pf_L" : "pf_m"); if (i) i.focus() }, 30); return }
+    if (ds.prodEdit) { const x = D.prod.find(v => v.id === ds.prodEdit); if (x) { pEdit = Object.assign({}, x); render(); window.scrollTo(0, 0) } return }
+    if (ds.prodCancel) { pEdit = null; render(); return }
+    if (ds.prodSave) { const m = ($("pf_m").value || "").trim().toUpperCase(), L = parseFloat($("pf_L").value), w = parseFloat($("pf_w").value), note = ($("pf_note").value || "").trim();
+      if (!m || !(L > 0) || !(w > 0)) { msg("型号、长度、理论支重都要填对。", "err"); return }
+      const id = specKey(m, L, w), old = pEdit.isNew ? null : D.prod.find(v => v.id === pEdit.id);
+      if (D.prod.some(v => v.id === id && (!old || v.id !== old.id))) { msg("这个规格已经有了。", "err"); return }
+      const doc = { id, m, L, w, band: bandOf(w), note };
+      if (await act([`${old ? "修改规格：" + old.m + " " + old.L + "米 " + old.w + " → " : "新增规格："}${m} ${L}米 ${w}`], async () => { if (old && old.id !== id) await ST.prod.del(old.id); await ST.prod.put(doc) }, "已保存规格。")) { pEdit = null; pModel = m; render() } return }
+    if (ds.prodDel) { const x = D.prod.find(v => v.id === ds.prodDel); if (!x) return; if (armDel !== "g" + x.id) { armDel = "g" + x.id; render(); return } armDel = null;
+      if (await act([`删除规格：${x.m} ${x.L}米 ${x.w}`, "已经开了的单子不受影响"], () => ST.prod.del(x.id), "已删除规格。")) { pEdit = null; render() } return }
+    if (ds.prodQuote) { const x = D.prod.find(v => v.id === ds.prodQuote); if (!x) return; tab = "quote"; LS.set("xs_tab", "quote"); ed = newDoc("quote", ""); addLine({ m: x.m, L: +x.L, w: +x.w }); msg("已按这个规格开了一张新报价单，先选客户。", "ok"); return }
+    if (ds.prodImp) { prodFile.click(); return }
+    if (ds.prodImpNo) { prodPlan = null; render(); return }
+    if (ds.prodImpOk) { const p = prodPlan, nw = p.specs.filter(x => !D.prod.some(y => y.id === x.id)), up = p.specs.filter(x => { const o = D.prod.find(y => y.id === x.id); return o && o.band !== x.band });
+      if (await act([`导入产品大数据：${p.name}`, `新增 ${nw.length} 个规格，更新 ${up.length} 个支重区间`], async () => { if (nw.length) await ST.prod.putMany(nw); for (const x of up) await ST.prod.update(x.id, { band: x.band }) }, `已导入：新增 ${nw.length} 个规格。`)) { prodPlan = null; render() } return }
+    if (ds.prodXl) { xlProd(); return }
     if (ds.priceImp) { impFile.click(); return }
     if (ds.impOk) { await applyImp(); return }
     if (ds.impNo) { impPlan = null; render(); return }
