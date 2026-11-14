@@ -14,11 +14,11 @@ python3 - <<'PY'
 import json,re
 p="beta/index.html";s=open(p,encoding="utf-8").read()
 s=s.replace('<script src="lib/firebase-app-compat.js"></script>','<script>window.CLOUD_SUFFIX="_beta";window.CHUHUO_URL="../chuhuo/"</script>\n<script src="lib/firebase-app-compat.js"></script>',1)
-s=re.sub(r"<title>.*?</title>","<title>铝型材管理（测试版）</title>",s,1)
-s=re.sub(r'<meta name="apple-mobile-web-app-title" content="[^"]*">','<meta name="apple-mobile-web-app-title" content="铝型材测试">',s,1)
+s=re.sub(r"<title>.*?</title>","<title>PETRJASON（测试版）</title>",s,1)
+s=re.sub(r'<meta name="apple-mobile-web-app-title" content="[^"]*">','<meta name="apple-mobile-web-app-title" content="PETRJASON测试">',s,1)
 s=s.replace("<h1>铝型材管理</h1>","<h1>铝型材管理 <span style=\"font-size:13px;background:#c00000;color:#fff;border-radius:6px;padding:1px 8px;vertical-align:middle\">测试版</span></h1>",1)
 open(p,"w",encoding="utf-8").write(s)
-p="beta/manifest.webmanifest";m=json.load(open(p,encoding="utf-8"));m["name"]="铝型材管理（测试版）";m["short_name"]="铝型材测试";json.dump(m,open(p,"w",encoding="utf-8"),ensure_ascii=False,indent=2)
+p="beta/manifest.webmanifest";m=json.load(open(p,encoding="utf-8"));m["name"]="PETRJASON（测试版）";m["short_name"]="PETRJASON测试";json.dump(m,open(p,"w",encoding="utf-8"),ensure_ascii=False,indent=2)
 p="beta/sw.js";s=open(p,encoding="utf-8").read();s=re.sub(r'const CACHE="[^"]*";','const CACHE="lxc-beta-'+__import__("time").strftime("%m%d%H%M")+'";',s,1);open(p,"w",encoding="utf-8").write(s)
 PY
 grep -q CLOUD_SUFFIX beta/index.html && echo "beta ready"
