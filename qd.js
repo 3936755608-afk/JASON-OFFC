@@ -1,4 +1,4 @@
-/* 铝型材管理：今日清单 / 查错核对 / 型号查询 / 更多（底部切换）。数据和“录入”共用同一个云端账号。 */
+/* 铝型材管理：今日清单 / 查错核对 / 型号查询 / 出货 / 更多（底部切换）。出货页在 ch.js。数据和“录入”共用同一个云端账号。 */
 (function () {
   const ST = ["已入库", "包装中", "刚生产"], CLS = { "已入库": "in", "包装中": "pk", "刚生产": "nw" };
   const $ = id => document.getElementById(id);
@@ -44,14 +44,14 @@
 :root{--chg:#ffe699;--chg-ink:#5a4300;--lv-h:#ffc7ce;--lv-h-ink:#9c0006;--lv-m:#fff2cc;--lv-m-ink:#7a5800;--lv-l:#ededed;--lv-l-ink:#555}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--chg:#4a3d12;--chg-ink:#ffe699;--lv-h:#4a1c20;--lv-h-ink:#ffb3b8;--lv-m:#3d3313;--lv-m-ink:#f3d98a;--lv-l:#2b2b2b;--lv-l-ink:#bbb}}
 body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
-body:not([data-tab="entry"]) .wrap>*:not(header.top):not(#qd):not(.banner):not(dialog){display:none!important}
+body:not([data-tab="entry"]) .wrap>*:not(header.top):not(#qd):not(#ch):not(.banner):not(dialog){display:none!important}
 body:not([data-tab="entry"]) #scanTop,body:not([data-tab="entry"]) #quickTop,body:not([data-tab="entry"]) #exportBtn{display:none}
 body[data-tab="entry"] #qd{display:none}
 body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 .qd-msg:empty{display:none}
 @media (max-width:700px){body:not([data-tab="entry"]) header.top h1{font-size:19px}body:not([data-tab="entry"]) header.top{gap:6px 10px}}
 .qd-bar{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-.qd-bar .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.qd-bar .in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
 .qd-bar button{border:0;background:none;min-height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;color:var(--muted);font-weight:600;position:relative}
 .qd-bar button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .qd-bar button[aria-current="page"]{color:var(--accent)}
@@ -134,9 +134,10 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     list: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>',
     check: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
     query: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+    ship: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
     more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
   };
-  const TABS = [["entry", "录入"], ["list", "今日清单"], ["check", "查错核对"], ["query", "型号查询"], ["more", "更多"]];
+  const TABS = [["entry", "录入"], ["list", "今日清单"], ["check", "查错核对"], ["query", "型号查询"], ["ship", "出货"], ["more", "更多"]];
   const bar = document.createElement("nav"); bar.className = "qd-bar"; bar.setAttribute("aria-label", "页面");
   bar.innerHTML = `<div class="in">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${t}${k === "check" ? '<span class="dot" id="qdDot" hidden></span>' : ""}</button>`).join("")}</div>`;
   document.body.appendChild(bar);
@@ -146,9 +147,9 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 
   function setTab(t) {
     tab = t; LS.set("qd_tab", t); document.body.dataset.tab = t; openS = null; editId = null;
-    const bt = ["dash", "data", "ship"].includes(t) ? "more" : t;
+    const bt = ["dash", "data"].includes(t) ? "more" : t;
     for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === bt ? "page" : "false");
-    if (t === "dash" || t === "data") { dataFull = true; render(); loadSums().then(() => { dataFull = true; render() }) } else if (t !== "entry") { render(); if (day) load() } else if (window.WC && WC.reload) WC.reload();
+    if (t === "ship") { if (window.CH) CH.show() } else if (t === "dash" || t === "data") { dataFull = true; render(); loadSums().then(() => { dataFull = true; render() }) } else if (t !== "entry") { render(); if (day) load() } else if (window.WC && WC.reload) WC.reload();
     window.scrollTo(0, 0);
   }
   bar.addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (b) setTab(b.dataset.tab) });
@@ -415,7 +416,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     return `<div class="qd-msg" id="qdMsg"></div><div class="qd-more">
       ${it("库存看板", "每天库存走势、各状态占比、出货（估）/新增（估）、支重区间、出货最快和呆货排行。", `<button type="button" class="btn primary" id="qdDash">打开看板</button>`)}
       ${it("产品大数据 / 型号库", "每个型号的库存、出货（估）、可卖次数、趋势、详情走势；型号标准库审核；一键导出大数据 Excel。", `<button type="button" class="btn primary" id="qdData">打开大数据</button>`)}
-      ${it("出货", "分配客户和加工厂、提货单、提货后自动扣库存。以后接进这里。", `<a class="btn" href="${ch}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">打开现有的出货 App</a>`, "预留入口")}
+      ${it("出货", "分配客户和加工厂、提货单、确认提货后自动扣车间盘点。已经放进底部的“出货”标签。", `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" id="qdShip">打开出货</button><a class="btn" href="${ch}" style="text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center">旧的出货 App</a></div>`)}
       ${it("拍照识别", "在 App 里直接拍手写单识别。需要 Claude API 密钥（按用量付费），以后再开。", `<button type="button" class="btn" id="qdScan">打开拍照识别</button>`)}
       ${it("型号库", "录入时下拉用的型号、长度、支重。", `<button type="button" class="btn" id="qdCat">打开型号库</button>`)}
       ${it("备份 / 恢复", "把云端全部数据存成一个文件，或者从备份文件恢复。", `<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="qdBak">备份全部数据</button><button type="button" class="btn" id="qdRes">从备份恢复</button></div>`)}
@@ -601,7 +602,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 
   /* ---------- 渲染 + 事件 ---------- */
   function render() {
-    if (tab === "entry") return;
+    if (tab === "entry" || tab === "ship") return;
     if (tab === "query" && box.dataset.v === "query" && $("qdQ") && $("qdQR")) { const tw = $("qdQR").querySelector(".qd-tw"), sx = tw ? tw.scrollLeft : 0; $("qdQR").innerHTML = queryResults(); const t2 = $("qdQR").querySelector(".qd-tw"); if (t2) t2.scrollLeft = sx; return }
     if (tab === "data" && !dataFull && box.dataset.v === "data" && $("qdDR")) { $("qdDR").innerHTML = dataResults(); return }
     dataFull = false;
@@ -624,6 +625,7 @@ body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
     if (b.id === "qdHistOk") { doHist(); return }
     if (b.id === "qdHistNo") { armHist = null; render(); return }
     if (b.id === "qdDash") { setTab("dash"); return }
+    if (b.id === "qdShip") { setTab("ship"); return }
     if (b.id === "qdBack") { setTab("more"); return }
     if (b.dataset.rg) { dashR = +b.dataset.rg; LS.set("qd_range", String(dashR)); render(); return }
     if (b.id === "qdRebuild") { rebuildSums(); return }

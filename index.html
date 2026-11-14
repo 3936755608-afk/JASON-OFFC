@@ -512,7 +512,7 @@ document.addEventListener("click",async e=>{
     const s=(box.querySelector('[data-tds][aria-pressed="true"]')||{}).dataset;const ns=s&&s.tds||r.s;
     const patch={};if(q!==r.q)patch.q=q;if(ns!==r.s)patch.s=ns;
     tdEdit=null;if(Object.keys(patch).length){try{await S.update(id,patch);await loadDay();say("已修改。")}catch(err){say("保存失败，请再试一次。",true)}}else renderDrop();return}
-  const tr=e.target.closest("tr[data-tr]");if(tr){const r=records.find(x=>x.id===tr.dataset.tr);if(r&&r.s===SHIP){say("已出货的行请在出货 App 里处理。");return}tdEdit=tdEdit===tr.dataset.tr?null:tr.dataset.tr;renderDrop()}
+  const tr=e.target.closest("tr[data-tr]");if(tr){const r=records.find(x=>x.id===tr.dataset.tr);if(r&&r.s===SHIP){say("已出货的行请在“出货”页里处理。");return}tdEdit=tdEdit===tr.dataset.tr?null:tr.dataset.tr;renderDrop()}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target&&e.target.id==="tdQ"){e.preventDefault();const b=document.querySelector("[data-tdok]");if(b)b.click()}});
 let selMode=false,sel=new Set(),selArm=false;
@@ -527,9 +527,9 @@ function renderTable(v){
   const rows=v.map((r,i)=>{const c=CLS[r.s]||"nw",pend=r.q==null,kg=r.q>0?r.w/6*r.L*r.q:0;if(r.q>0){tq+=r.q;tkg+=kg;tn++}
     const flag=(r.n||"").startsWith("【需核对】");
     const qcell=editQ===r.id?`<td class="c-q editing" data-q="${r.id}"><input id="cellQ" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" value="${r.q!=null?r.q:""}" autocomplete="off"><button type="button" class="nx" data-nx="${r.id}" aria-label="保存并到下一行">↓</button></td>`
-      :r.s===SHIP?`<td class="c-q" title="已出货，由出货App管理">${fmt0(r.q)}</td>`:`<td class="c-q" data-q="${r.id}">${pend?`<span class="pend">待填${r.pq!=null?" · 上次"+fmt0(r.pq):""}</span>`:fmt0(r.q)}</td>`;
+      :r.s===SHIP?`<td class="c-q" title="已出货，由“出货”页管理">${fmt0(r.q)}</td>`:`<td class="c-q" data-q="${r.id}">${pend?`<span class="pend">待填${r.pq!=null?" · 上次"+fmt0(r.pq):""}</span>`:fmt0(r.q)}</td>`;
     const scell=editS===r.id?`<td class="c-s" data-s="${r.id}"><span class="opts">${ST.map(x=>`<button type="button" class="pill ${CLS[x]}" data-ss="${x}" data-sid="${r.id}">${x}</button>`).join("")}</span></td>`
-      :r.s===SHIP?`<td class="c-s" title="已出货，要撤销请在出货App里点“撤销提货”"><span class="pill ${c}">${esc(r.s)}</span></td>`:`<td class="c-s" data-s="${r.id}"><span class="pill ${c}">${esc(r.s)}</span></td>`;
+      :r.s===SHIP?`<td class="c-s" title="已出货，要撤销请在“出货”页点“撤销提货”"><span class="pill ${c}">${esc(r.s)}</span></td>`:`<td class="c-s" data-s="${r.id}"><span class="pill ${c}">${esc(r.s)}</span></td>`;
     return `<tr class="${c}${sel.has(r.id)?" picked":""}${qkId===r.id?" cur":""}" data-id="${r.id}">${selMode?`<td class="c-chk"><span class="chk${sel.has(r.id)?" on":""}" data-pick="${r.id}" role="checkbox" aria-checked="${sel.has(r.id)}" tabindex="0" style="margin:auto">${sel.has(r.id)?"✓":""}</span></td>`:""}<td class="c-idx">${i+1}</td><td class="c-m tl" data-edit="${r.id}">${esc(r.m)}</td><td class="c-L">${r.L}</td><td class="c-w">${r.w}</td><td>${(r.w/6*r.L).toFixed(4)}</td>${qcell}<td>${r.q>0?fmt1(kg):""}</td>${scell}<td class="c-n${flag?" flag":""}" title="${esc(r.n||"")}">${esc(r.n||"")}</td></tr>`}).join("");
   $("list").innerHTML=`<div class="tblwrap"><table class="grid${selMode?" sm":""}"><thead><tr>${selMode?'<th class="c-chk"></th>':""}<th class="c-idx">序号</th><th class="c-m tl">型号</th><th>长度(米)</th><th>理论支重</th><th>实际支重</th><th>支数</th><th>重量(kg)</th><th>状态</th><th class="tl">备注</th></tr></thead><tbody>${rows}</tbody>
     <tfoot><tr>${selMode?'<td class="c-chk"></td>':""}<td class="c-idx"></td><td class="c-m tl">合计 ${tn} 行</td><td></td><td></td><td></td><td>${fmt0(tq)}</td><td>${fmt1(tkg)}</td><td></td><td></td></tr></tfoot></table></div>`;
@@ -951,5 +951,6 @@ async function buildWorkbook(XL,recs,day){
 <script src="qda.js"></script>
 <script src="qdbig.js"></script>
 <script src="qd.js"></script>
+<script src="ch.js"></script>
 </body>
 </html>
