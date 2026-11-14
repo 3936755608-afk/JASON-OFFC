@@ -24,13 +24,24 @@
   if (BETA) { $("title").innerHTML = 'PETRJASON 销售<small>测试版</small>'; document.title = "PETRJASON 销售（测试版）" }
 
   /* ---------- 数据 ---------- */
-  const ST = { cust: Cloud.store("xs_cust"), follow: Cloud.store("xs_follow"), quote: Cloud.store("xs_quote"), order: Cloud.store("xs_order"), ship: Cloud.store("xs_ship"), pay: Cloud.store("xs_pay") };
-  const D = { cust: [], follow: [], quote: [], order: [], ship: [], pay: [] };
+  const ST = { cust: Cloud.store("xs_cust"), follow: Cloud.store("xs_follow"), quote: Cloud.store("xs_quote"), order: Cloud.store("xs_order"), ship: Cloud.store("xs_ship"), pay: Cloud.store("xs_pay"), ingot: Cloud.store("xs_ingot") };
+  const D = { cust: [], follow: [], quote: [], order: [], ship: [], pay: [], ingot: [] };
+  const KV = Cloud.kv("xs_kv"), P = { billet: 0, colors: [] };
   async function loadAll() {
     try { const ks = Object.keys(ST); const vs = await Promise.all(ks.map(k => ST[k].all())); ks.forEach((k, i) => D[k] = vs[i]) }
     catch (e) { console.error(e); $("banner").hidden = false; $("banner").textContent = "读取云端数据失败，请检查网络后刷新页面。" }
+    try { const [b, c] = await Promise.all([KV.get("billet"), KV.get("colors")]); P.billet = +b || 0; P.colors = Array.isArray(c) ? c : [] } catch (e) { console.error(e) }
     D.cust.sort((a, b) => a.name.localeCompare(b.name, "zh"));
   }
+  /* ---------- 内部单价：单价(元/吨) = 开单当天的铝锭价 + 胚料加工费 + 表面颜色加工费；胚料费、颜色费可以按客户单独定，没定的用标准价 ---------- */
+  const RAW = { id: "raw", name: "胚料（不做颜色）", fee: 0 };
+  const colors = () => [RAW, ...P.colors];
+  const colorName = id => (colors().find(c => c.id === (id || "raw")) || {}).name || "(已删除颜色)";
+  const has = v => v !== undefined && v !== null && v !== "";
+  function ingotOn(d) { let best = null; for (const x of D.ingot) if (x.d <= d && (!best || x.d > best.d)) best = x; return best }
+  function custBillet(c) { return c && has(c.billet) ? +c.billet : +P.billet || 0 }
+  function custColorFee(c, color) { if (!color || color === "raw") return 0; const ov = c && c.cfee && c.cfee[color]; if (has(ov)) return +ov; const k = P.colors.find(x => x.id === color); return k ? +k.fee || 0 : 0 }
+  function priceParts(cid, color, d) { const ig = ingotOn(d); if (!ig) return null; const c = custOf(cid), bil = custBillet(c), cf = custColorFee(c, color); return { ing: +ig.price, ingD: ig.d, bil, cf, unit: +ig.price + bil + cf } }
   /* 多步操作：先确认一次（列出要做的事、输授权码），之后这几步合成一条操作记录 */
   async function boss(items, fn) { await Cloud.boss.confirm(items); Cloud.boss.begin(); try { return await fn() } finally { Cloud.boss.end() } }
   async function act(items, fn, okText) {
@@ -80,13 +91,14 @@
     cust: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.8 3 2.6 3.5 5.2"/>',
     quote: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
     order: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+    price: '<path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.5"/>',
     acct: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
     more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
   };
-  const TABS = [["home", "首页"], ["cust", "客户"], ["quote", "报价"], ["order", "订单"], ["acct", "账款"], ["more", "更多"]];
+  const TABS = [["home", "首页"], ["cust", "客户"], ["quote", "报价"], ["order", "订单"], ["price", "价格"], ["acct", "账款"], ["more", "更多"]];
   $("bar").innerHTML = `<div class="in">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${t}</button>`).join("")}</div>`;
-  let tab = LS.get("xs_tab", "home"), sel = null, ed = null, armDel = null, logList = null, q = "", qf = "all", shipEd = null, payEd = null;
-  function setTab(t, s) { tab = t; sel = s || null; ed = null; shipEd = null; payEd = null; armDel = null; LS.set("xs_tab", t); for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"); render(); window.scrollTo(0, 0) }
+  let tab = LS.get("xs_tab", "home"), sel = null, ed = null, armDel = null, logList = null, q = "", qf = "all", shipEd = null, payEd = null, stdEd = null, pcEd = null, pView = "fee", igEd = null;
+  function setTab(t, s) { tab = t; sel = s || null; ed = null; shipEd = null; payEd = null; armDel = null; stdEd = null; pcEd = t === "price" && s ? s : null; LS.set("xs_tab", t); for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"); render(); window.scrollTo(0, 0) }
   $("bar").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { q = ""; qf = "all"; setTab(b.dataset.tab) } });
   let msgT = null;
   function msg(t, kind) { const m = $("msg"); if (!m) return; m.textContent = t || ""; m.className = "msg" + (kind ? " " + kind : ""); clearTimeout(msgT); if (kind === "ok") msgT = setTimeout(() => { if ($("msg")) $("msg").textContent = "" }, 6000) }
@@ -144,6 +156,8 @@
         <section class="panel"><h2>订单</h2>${os.length ? `<div class="list">${os.map(o => { const s = orderState(o); return `<div class="li" data-go="order" data-id="${o.id}"><div><div class="n d">${esc(o.no)}</div><div class="sub">${md(o.d)} · ${n0(linesQ(o.lines))} 支 · ${n3(linesKg(o.lines) / 1000)} 吨 · ${yuan(linesAmt(o.lines))}</div></div><div class="r">${chip(s[0], s[1])}</div></div>` }).join("")}</div>` : `<div class="sub">还没有订单。</div>`}</section>
         <section class="panel"><h2>报价单</h2>${qs.length ? `<div class="list">${qs.map(x => `<div class="li" data-go="quote" data-id="${x.id}"><div><div class="n d">${esc(x.no)}</div><div class="sub">${md(x.d)} · ${n0(linesQ(x.lines))} 支 · ${yuan(linesAmt(x.lines))}</div></div><div class="r">${x.order ? chip("已转订单", "done") : chip("报价", "gray")}</div></div>`).join("")}</div>` : `<div class="sub">还没有报价单。</div>`}</section>
       </div>
+      <section class="panel"><h2><span>这个客户的定价</span><button type="button" class="btn sm" data-go-price="${c.id}">改定价</button></h2>
+        <div class="sub">胚料加工费 <b class="d">${n0(custBillet(c))}</b> 元/吨${has(c.billet) ? "（单独定）" : "（标准）"}；单独定了 ${c.cfee ? Object.values(c.cfee).filter(has).length : 0} 种颜色的加工费${ingotOn(today()) ? `；今天不做颜色的单价 <b class="d">${n0(ingotOn(today()).price + custBillet(c))}</b> 元/吨` : ""}。</div></section>
       <section class="panel"><h2>客户资料</h2>${custForm(c)}<div class="acts"><button type="button" class="btn primary" data-save-cust="${c.id}">保存资料</button>
         <button type="button" class="btn danger" data-del-cust="${c.id}">${armDel === "c" + c.id ? "再点一次确认删除" : "删除客户"}</button></div><div class="sub">有订单、发货或收款的客户不能删除。</div></section>
     </div>`;
@@ -160,7 +174,8 @@
     const cOpts = `<option value="">— 选客户 —</option>` + D.cust.map(c => `<option value="${c.id}"${c.id === x.cust ? " selected" : ""}>${esc(c.name)}</option>`).join("") + `<option value="__new">＋ 新客户…</option>`;
     const rows = x.lines.map((l, i) => { const s = sh[l.lid] || 0; return `<tr data-i="${i}"><td class="ct">${i + 1}</td>
       <td><input class="m" data-f="m" value="${esc(l.m || "")}" autocomplete="off" spellcheck="false"${s ? " disabled" : ""}></td><td><input data-f="L" inputmode="decimal" value="${l.L ?? ""}"${s ? " disabled" : ""}></td><td><input data-f="w" inputmode="decimal" value="${l.w ?? ""}"${s ? " disabled" : ""}></td>
-      <td><input data-f="q" inputmode="numeric" value="${l.q ?? ""}"></td><td><input data-f="price" inputmode="decimal" value="${l.price || ""}" placeholder="${l.hint ? "上次 " + l.hint : ""}"></td>
+      <td><select data-f="color" style="min-width:130px;height:34px;border:1px solid var(--line);border-radius:6px;background:var(--bg)"${s ? " disabled" : ""}>${colors().map(c => `<option value="${c.id}"${c.id === (l.color || "raw") ? " selected" : ""}>${esc(c.name)}</option>`).join("")}</select></td>
+      <td><input data-f="q" inputmode="numeric" value="${l.q ?? ""}"></td><td><input data-f="price" inputmode="decimal" value="${l.price || ""}" placeholder="${l.hint ? "上次 " + l.hint : ""}"></td><td class="tl" id="pp_${i}" style="font-size:12px;line-height:1.3">${partsTxt(l, i)}</td>
       <td id="kg_${i}">${n1(kgOf(l))}</td><td class="M" id="am_${i}">${yuan(amtOf(l))}</td>${isQ ? "" : `<td class="${s ? "B" : ""}">${s ? n0(s) : ""}</td>`}<td class="ct">${s ? "" : `<button type="button" class="x" data-rm="${i}">删</button>`}</td></tr>` }).join("");
     const st = !isQ && saved ? orderState(x) : null;
     return `<div class="msg" id="msg"></div>
@@ -172,21 +187,25 @@
         <div class="field" id="e_newc_f" hidden><label for="e_newc">新客户名称</label><input id="e_newc" autocomplete="off"></div>
         <div class="field"><label for="e_d">日期</label><input id="e_d" type="date" value="${x.d}"></div>
         <div class="field" style="grid-column:span 2"><label for="e_note">备注</label><input id="e_note" value="${esc(x.note || "")}" placeholder="${isQ ? "例如 有效期 7 天、含运费" : "例如 交货日期、颜色"}" autocomplete="off"></div></div>
-      <div class="tw"><table class="g"><thead><tr><th>#</th><th>型号</th><th>长度(米)</th><th>理论支重</th><th>支数</th><th>单价(元/吨)</th><th>理论重量(kg)</th><th>金额(元)</th>${isQ ? "" : "<th>已发(支)</th>"}<th></th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${isQ ? 9 : 10}" class="empty">还没有明细。在下面搜型号加一行。</td></tr>`}</tbody></table></div>
+      <div class="tw"><table class="g"><thead><tr><th>#</th><th>型号</th><th>长度(米)</th><th>理论支重</th><th>颜色</th><th>支数</th><th>单价(元/吨)</th><th>单价组成（内部）</th><th>理论重量(kg)</th><th>金额(元)</th>${isQ ? "" : "<th>已发(支)</th>"}<th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${isQ ? 11 : 12}" class="empty">还没有明细。在下面搜型号加一行。</td></tr>`}</tbody></table></div>
+      ${ingotOn(x.d) ? `<div class="sub">单价按 ${md(ingotOn(x.d).d)} 的铝锭价 ${n0(ingotOn(x.d).price)} 元/吨 + 这个客户的胚料费和颜色费自动算；手改过的单价不会被自动改。</div>` : `<div class="banner">还没有填 ${x.d} 及以前的铝锭价，单价不能自动算（可以手填）。到“价格”页填当日铝锭价。</div>`}
       <div class="tools"><input class="q" id="lnQ" placeholder="🔍 搜型号加一行，例如 7801" autocomplete="off" spellcheck="false" style="text-transform:uppercase"><button type="button" class="btn" data-add-blank="1">手动加一行</button></div>
       <div class="res" id="lnRes" hidden></div>
       <div class="tot" id="e_tot"></div>
       <div class="acts"><button type="button" class="btn primary" data-save-doc="1" style="min-width:140px">保存${nm}</button>${saved ? `<button type="button" class="btn danger" data-del-doc="1">${armDel === "d" + x.id ? "再点一次确认删除" : "删除"}</button>` : ""}</div>
-      <div class="sub">金额 = 理论支重 ÷ 6 × 长度 × 支数 ÷ 1000 × 单价（元/吨）。${isQ ? "" : "已经发过货的行，型号、长度、支重不能改，支数不能少于已发。"}</div>
+      <div class="sub">单价 = 铝锭价 + 胚料加工费 + 颜色加工费（元/吨）；金额 = 理论支重 ÷ 6 × 长度 × 支数 ÷ 1000 × 单价。导出给客户的 Excel 只有单价，没有组成。${isQ ? "" : "已经发过货的行，型号、长度、支重不能改，支数不能少于已发。"}</div>
     </section>${!isQ && saved ? viewShipsOf(x) : ""}`;
   }
   function paintTotals() {
     if (!ed || !$("e_tot")) return;
-    ed.lines.forEach((l, i) => { const k = $("kg_" + i), a = $("am_" + i); if (k) k.textContent = n1(kgOf(l)); if (a) a.textContent = yuan(amtOf(l)) });
+    ed.lines.forEach((l, i) => { const k = $("kg_" + i), a = $("am_" + i), pp = $("pp_" + i); if (k) k.textContent = n1(kgOf(l)); if (a) a.textContent = yuan(amtOf(l)); if (pp) pp.innerHTML = partsTxt(l, i) });
     $("e_tot").innerHTML = `<span>${ed.lines.length} 行</span><span><b>${n0(linesQ(ed.lines))}</b> 支</span><span><b>${n1(linesKg(ed.lines))}</b> kg（${n3(linesKg(ed.lines) / 1000)} 吨）</span><span>合计 <b class="M">${yuan(linesAmt(ed.lines))}</b></span>`;
   }
-  function addLine(spec) { const l = { lid: uid(), m: spec ? spec.m : "", L: spec ? spec.L : "", w: spec ? spec.w : "", q: "", price: 0 }; const p = spec ? lastPrice(ed.cust, l) : 0; if (p) { l.price = p; l.hint = p } ed.lines.push(l); render(); const tr = document.querySelector(`tr[data-i="${ed.lines.length - 1}"]`); if (tr) { const i = tr.querySelector(spec ? '[data-f="q"]' : '[data-f="m"]'); if (i) i.focus() } }
+  function partsTxt(l, i) { if (l.man) return `<span style="color:var(--warn-ink)">手改</span> <button type="button" class="x" style="color:inherit" data-auto="${i}">按定价算</button>`; return has(l.ing) && +l.price === l.ing + l.bil + l.cf ? `锭 ${n0(l.ing)} + 胚 ${n0(l.bil)} + 色 ${n0(l.cf)}` : "" }
+  function autoPrice(l) { if (l.man) return; const p = priceParts(ed.cust && ed.cust !== "__new" ? ed.cust : "", l.color || "raw", ed.d); if (p) Object.assign(l, { price: p.unit, ing: p.ing, bil: p.bil, cf: p.cf }) }
+  function reprice() { if (!ed) return; const sh = ed.kind === "order" ? shippedBy(ed.id) : {}; ed.lines.forEach(l => { if (!sh[l.lid]) autoPrice(l) }) }
+  function addLine(spec) { const l = { lid: uid(), m: spec ? spec.m : "", L: spec ? spec.L : "", w: spec ? spec.w : "", color: "raw", q: "", price: 0 }; autoPrice(l); const p = spec && !(l.price > 0) ? lastPrice(ed.cust, l) : 0; if (p) { l.price = p; l.hint = p; l.man = true } ed.lines.push(l); render(); const tr = document.querySelector(`tr[data-i="${ed.lines.length - 1}"]`); if (tr) { const i = tr.querySelector(spec ? '[data-f="q"]' : '[data-f="m"]'); if (i) i.focus() } }
   function checkDoc() {
     const x = ed; if (!x.cust) return "请选客户。"; if (!x.lines.length) return "请至少加一行明细。";
     const sh = x.kind === "order" ? shippedBy(x.id) : {};
@@ -204,7 +223,7 @@
     if (x.cust === "__new") { const n = ($("e_newc").value || "").trim(); if (!n) { msg("请填新客户名称。", "err"); return } if (D.cust.some(c => c.name === n)) { msg("已经有同名客户了，请在下拉里选。", "err"); return } }
     const err = checkDoc(); if (err) { msg(err, "err"); return }
     const newC = x.cust === "__new" ? { id: uid(), name: $("e_newc").value.trim(), contact: "", phone: "", addr: "", pay: "", note: "" } : null;
-    const doc = { id: x.id, no: x.no, d: x.d, cust: newC ? newC.id : x.cust, note: x.note || "", lines: x.lines.map(l => ({ lid: l.lid, m: String(l.m).trim().toUpperCase(), L: +l.L, w: +l.w, q: +l.q, price: +l.price })), t: x.t || Date.now() };
+    const doc = { id: x.id, no: x.no, d: x.d, cust: newC ? newC.id : x.cust, note: x.note || "", lines: x.lines.map(l => Object.assign({ lid: l.lid, m: String(l.m).trim().toUpperCase(), L: +l.L, w: +l.w, color: l.color || "raw", q: +l.q, price: +l.price }, l.man ? { man: true } : has(l.ing) ? { ing: +l.ing, bil: +l.bil, cf: +l.cf } : {})), t: x.t || Date.now() };
     if (isQ) doc.order = x.order || ""; else doc.quote = x.quote || "";
     const items = [`${x.isNew ? "新建" : "修改"}${nm} ${doc.no}：${newC ? newC.name + "（新客户）" : custName(doc.cust)}，${doc.lines.length} 行，${n0(linesQ(doc.lines))} 支，${n3(linesKg(doc.lines) / 1000)} 吨，${yuan(linesAmt(doc.lines))}`];
     if (!isQ && x.quote && x.isNew) items.push("由报价单转成，报价单标记“已转订单”");
@@ -240,13 +259,13 @@
     return `<div class="panel" style="background:var(--soft)"><h2>登记发货 <span class="sub">提货后登记，金额记入这个客户的应收</span></h2>
       <div class="fgrid"><div class="field"><label for="sp_d">发货日期</label><input id="sp_d" type="date" value="${shipEd.d}"></div><div class="field"><label for="sp_car">车牌</label><input id="sp_car" value="${esc(shipEd.car)}" autocomplete="off"></div>
         <div class="field"><label for="sp_driver">司机 / 电话</label><input id="sp_driver" value="${esc(shipEd.driver)}" autocomplete="off"></div><div class="field"><label for="sp_kg">过磅重量 kg（可不填）</label><input id="sp_kg" inputmode="decimal" value="${esc(shipEd.kg)}"></div></div>
-      <div class="tw"><table class="g"><thead><tr><th>型号</th><th>长度</th><th>支重</th><th>订(支)</th><th>已发(支)</th><th>这次发(支)</th></tr></thead><tbody>${o.lines.map(l => { const left = (+l.q) - (sh[l.lid] || 0); return `<tr><td class="tl B">${esc(l.m)}</td><td class="L">${l.L}</td><td class="W">${l.w}</td><td>${n0(l.q)}</td><td>${sh[l.lid] ? n0(sh[l.lid]) : ""}</td><td style="width:130px"><input data-sq="${l.lid}" inputmode="numeric" value="${shipEd.q[l.lid] ?? (left > 0 ? left : "")}"${left > 0 ? "" : " disabled"}></td></tr>` }).join("")}</tbody></table></div>
+      <div class="tw"><table class="g"><thead><tr><th>型号</th><th>长度</th><th>支重</th><th>颜色</th><th>订(支)</th><th>已发(支)</th><th>这次发(支)</th></tr></thead><tbody>${o.lines.map(l => { const left = (+l.q) - (sh[l.lid] || 0); return `<tr><td class="tl B">${esc(l.m)}</td><td class="L">${l.L}</td><td class="W">${l.w}</td><td class="tl">${esc(colorName(l.color))}</td><td>${n0(l.q)}</td><td>${sh[l.lid] ? n0(sh[l.lid]) : ""}</td><td style="width:130px"><input data-sq="${l.lid}" inputmode="numeric" value="${shipEd.q[l.lid] ?? (left > 0 ? left : "")}"${left > 0 ? "" : " disabled"}></td></tr>` }).join("")}</tbody></table></div>
       <div class="acts"><button type="button" class="btn primary" data-save-ship="1">确认发货</button><button type="button" class="btn" data-cancel-ship="1">取消</button></div></div>`;
   }
   async function saveShip() {
     const o = D.order.find(v => v.id === shipEd.order); if (!o) return;
     const sh = shippedBy(o.id), lines = [];
-    for (const l of o.lines) { const v = parseInt(String(shipEd.q[l.lid] ?? "").replace(/[^\d]/g, ""), 10); if (!(v > 0)) continue; const left = (+l.q) - (sh[l.lid] || 0); if (v > left) { msg(`${l.m}（${l.L}米）只剩 ${n0(left)} 支没发，这次填了 ${n0(v)} 支。`, "err"); return } lines.push({ lid: l.lid, m: l.m, L: l.L, w: l.w, q: v, price: l.price }) }
+    for (const l of o.lines) { const v = parseInt(String(shipEd.q[l.lid] ?? "").replace(/[^\d]/g, ""), 10); if (!(v > 0)) continue; const left = (+l.q) - (sh[l.lid] || 0); if (v > left) { msg(`${l.m}（${l.L}米）只剩 ${n0(left)} 支没发，这次填了 ${n0(v)} 支。`, "err"); return } lines.push({ lid: l.lid, m: l.m, L: l.L, w: l.w, color: l.color || "raw", q: v, price: l.price }) }
     if (!lines.length) { msg("这次没有填发货支数。", "err"); return }
     const d = shipEd.d || today(), s = { id: uid(), no: nextNo("FH", D.ship, d), d, cust: o.cust, order: o.id, lines, car: shipEd.car.trim(), driver: shipEd.driver.trim(), kg: parseFloat(shipEd.kg) || 0, t: Date.now() };
     const ok = await act([`登记发货 ${s.no}：${custName(o.cust)}（订单 ${o.no}），${lines.length} 行，${n0(linesQ(lines))} 支，${n3(linesKg(lines) / 1000)} 吨`, `记入应收 ${yuan(linesAmt(lines))}`], () => ST.ship.put(s), `已登记发货 ${s.no}，应收增加 ${yuan(linesAmt(lines))}。`);
@@ -289,6 +308,60 @@
       <div class="acts"><button type="button" class="btn primary" data-save-pay="1">保存收款</button></div></section>`;
   }
 
+
+  /* ---------- 价格（内部单价汇总） ---------- */
+  function viewPrice() {
+    const t = today(), ig = ingotOn(t), cs = colors(), hist = D.ingot.slice().sort((a, b) => b.d > a.d ? 1 : -1);
+    if (!stdEd) stdEd = { billet: P.billet || "", colors: P.colors.map(c => Object.assign({}, c)) };
+    if (!igEd) igEd = { d: t, price: "" };
+    const unitOf = (c, col) => ig ? ig.price + custBillet(c) + custColorFee(c, col) : null;
+    const pc = pcEd ? custOf(pcEd) : null;
+    const cell = (v, own) => `<td class="${own ? "B" : ""}" style="${own ? "" : "color:var(--muted)"}">${n0(v)}</td>`;
+    return `<div class="msg" id="msg"></div>
+    <div class="cards">${card("今日铝锭价", ig ? n0(ig.price) + " 元/吨" : "未填", ig ? (ig.d === t ? "今天" : md(ig.d) + " 填的（今天还没填）") : "请在下面填", ig && ig.d === t ? "" : "warn")}${card("标准胚料加工费", n0(P.billet) + " 元/吨", "没单独定价的客户用这个")}${card("颜色", P.colors.length + " 种", "另有“胚料（不做颜色）”= 0")}${card("单独定价的客户", D.cust.filter(c => has(c.billet) || (c.cfee && Object.values(c.cfee).some(has))).length + " 个", "其余用标准价")}</div>
+    <div class="side">
+      <section class="panel"><h2><span>客户定价列表</span><span class="acts"><span class="seg"><button type="button" data-pv="fee" aria-pressed="${pView === "fee"}">加工费</button><button type="button" data-pv="unit" aria-pressed="${pView === "unit"}">今日单价</button></span><button type="button" class="btn" data-price-xl="1">导出内部价格表</button></span></h2>
+        <div class="sub">${pView === "fee" ? "黑色粗体 = 这个客户单独定的价；灰色 = 用标准价。点一行改这个客户的定价。" : ig ? `今日单价 = 铝锭价 ${n0(ig.price)} + 胚料费 + 颜色费（元/吨）。` : "还没有铝锭价，算不出今日单价。"}</div>
+        ${pc ? `<div class="panel" style="background:var(--soft)"><h2>${esc(pc.name)} 的定价 <span class="sub">空着 = 用标准价</span></h2>
+          <div class="fgrid"><div class="field"><label for="pc_billet">胚料加工费（元/吨）</label><input id="pc_billet" inputmode="decimal" value="${has(pc.billet) ? pc.billet : ""}" placeholder="标准 ${n0(P.billet)}"></div>
+          ${P.colors.map(c => `<div class="field"><label>${esc(c.name)}（元/吨）</label><input data-pcf="${c.id}" inputmode="decimal" value="${pc.cfee && has(pc.cfee[c.id]) ? pc.cfee[c.id] : ""}" placeholder="标准 ${n0(c.fee)}"></div>`).join("")}</div>
+          <div class="acts"><button type="button" class="btn primary" data-save-pc="${pc.id}">保存 ${esc(pc.name)} 的定价</button><button type="button" class="btn" data-clear-pc="1">全部清空（用标准价）</button><button type="button" class="btn" data-cancel-pc="1">取消</button></div></div>` : ""}
+        ${D.cust.length ? `<div class="tw"><table class="g"><thead><tr><th style="position:sticky;left:0;z-index:3">客户</th>${pView === "fee" ? `<th>胚料加工费</th>${P.colors.map(c => `<th>${esc(c.name)}</th>`).join("")}` : cs.map(c => `<th>${esc(c.name)}</th>`).join("")}</tr></thead><tbody>
+          <tr><td class="tl" style="position:sticky;left:0;z-index:1;color:var(--muted)">（标准价）</td>${pView === "fee" ? `<td>${n0(P.billet)}</td>${P.colors.map(c => `<td>${n0(c.fee)}</td>`).join("")}` : cs.map(c => `<td>${ig ? n0(ig.price + (+P.billet || 0) + (+c.fee || 0)) : ""}</td>`).join("")}</tr>
+          ${D.cust.map(c => `<tr class="click" data-pc="${c.id}"><td class="tl B" style="position:sticky;left:0;z-index:1">${esc(c.name)}</td>${pView === "fee" ? cell(custBillet(c), has(c.billet)) + P.colors.map(k => cell(custColorFee(c, k.id), c.cfee && has(c.cfee[k.id]))).join("") : cs.map(k => `<td class="M">${ig ? n0(unitOf(c, k.id)) : ""}</td>`).join("")}</tr>`).join("")}
+          </tbody></table></div>` : `<div class="empty">还没有客户。</div>`}
+      </section>
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <section class="panel"><h2>当日铝锭价</h2>
+          <div class="fgrid" style="grid-template-columns:1fr 1fr"><div class="field"><label for="ig_d">日期</label><input id="ig_d" type="date" value="${igEd.d}"></div><div class="field"><label for="ig_p">铝锭价（元/吨）</label><input id="ig_p" inputmode="decimal" value="${esc(igEd.price)}" placeholder="${ig ? "上次 " + n0(ig.price) : "例如 20500"}"></div></div>
+          <div class="acts"><button type="button" class="btn primary" data-save-ig="1">保存铝锭价</button></div>
+          <div class="sub">开单时用开单当天的铝锭价（那天没填就用之前最近一天的），存进单子后就不变了。</div>
+          ${hist.length ? `<div class="tw" style="max-height:260px"><table class="g"><thead><tr><th>日期</th><th>铝锭价</th><th>涨跌</th><th></th></tr></thead><tbody>${hist.slice(0, 30).map((x, i) => { const pr = hist[i + 1], dd = pr ? x.price - pr.price : 0; return `<tr><td>${md(x.d)}</td><td class="B">${n0(x.price)}</td><td style="color:${dd > 0 ? "var(--accent)" : dd < 0 ? "#2f7d3b" : "var(--muted)"}">${pr ? (dd > 0 ? "+" : "") + n0(dd) : ""}</td><td class="ct"><button type="button" class="x" data-del-ig="${x.id}">${armDel === "i" + x.id ? "确认删除" : "删"}</button></td></tr>` }).join("")}</tbody></table></div>` : ""}
+        </section>
+        <section class="panel"><h2>标准加工费</h2>
+          <div class="field"><label for="sd_billet">标准胚料加工费（元/吨）</label><input id="sd_billet" inputmode="decimal" value="${esc(stdEd.billet)}"></div>
+          <div class="tw"><table class="g"><thead><tr><th>颜色</th><th>标准颜色加工费（元/吨）</th><th></th></tr></thead><tbody>
+            <tr><td class="tl" style="color:var(--muted)">胚料（不做颜色）</td><td style="color:var(--muted)">0</td><td></td></tr>
+            ${stdEd.colors.map((c, i) => `<tr><td><input class="m" data-scn="${i}" value="${esc(c.name)}" placeholder="颜色名称" style="text-transform:none;min-width:90px"></td><td><input data-scf="${i}" inputmode="decimal" value="${esc(c.fee)}"></td><td class="ct"><button type="button" class="x" data-rm-color="${i}">删</button></td></tr>`).join("")}
+          </tbody></table></div>
+          <div class="acts"><button type="button" class="btn" data-add-color="1">＋ 加一种颜色</button><button type="button" class="btn primary" data-save-std="1">保存标准加工费</button></div>
+          <div class="sub">改标准价只影响以后新开的单，已经存了的报价单、订单不变。删掉的颜色，旧单子里显示“已删除颜色”。</div>
+        </section>
+      </div>
+    </div>`;
+  }
+  async function xlPrice() {
+    try { const XL = await loadXL(), wb = new XL.Workbook(), t = today(), ig = ingotOn(t), cs = colors();
+      const mk = (name, f, cols, first) => { const ws = wb.addWorksheet(name); const h = ws.addRow(["客户", ...(first ? [first] : []), ...cols.map(c => c.name)]); h.eachCell(c => { c.font = FH; c.fill = fill("A3122A"); c.border = BD; c.alignment = { horizontal: "center", wrapText: true } }); h.height = 30;
+        const add = (nm, c) => { const r = ws.addRow([nm, ...(first ? [f(c, null)] : []), ...cols.map(k => f(c, k.id))]); r.eachCell((x, i) => { x.font = F; x.border = BD; if (i > 1) x.numFmt = "#,##0" }) };
+        add("（标准价）", null); D.cust.forEach(c => add(c.name, c)); ws.getColumn(1).width = 18; for (let i = 2; i <= cols.length + 2; i++) ws.getColumn(i).width = 12; ws.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }] };
+      mk("加工费", (c, col) => col === null ? (c ? custBillet(c) : +P.billet || 0) : (c ? custColorFee(c, col) : (col === "raw" ? 0 : +(P.colors.find(k => k.id === col) || {}).fee || 0)), P.colors, "胚料加工费");
+      if (ig) mk("今日单价", (c, col) => ig.price + (c ? custBillet(c) : +P.billet || 0) + (col === null ? 0 : (c ? custColorFee(c, col) : (col === "raw" ? 0 : +(P.colors.find(k => k.id === col) || {}).fee || 0))), cs);
+      const ws = wb.addWorksheet("铝锭价"); const h = ws.addRow(["日期", "铝锭价(元/吨)"]); h.eachCell(c => { c.font = FH; c.fill = fill("A3122A"); c.border = BD });
+      D.ingot.slice().sort((a, b) => b.d > a.d ? 1 : -1).forEach(x => { const r = ws.addRow([x.d, x.price]); r.eachCell(c => { c.font = F; c.border = BD }); r.getCell(2).numFmt = "#,##0" }); ws.getColumn(1).width = 14; ws.getColumn(2).width = 16;
+      await shareFile(new Blob([await wb.xlsx.writeBuffer()], { type: XT }), `内部价格表_${mmdd(t)}.xlsx`); msg("已导出内部价格表（只给内部看）。", "ok");
+    } catch (e) { console.error(e); msg("导出失败，请再试一次。", "err") }
+  }
   /* ---------- 更多 ---------- */
   function viewMore() {
     const it = (t, p, b) => `<div class="it"><h3>${t}</h3><p>${p}</p>${b || ""}</div>`;
@@ -313,20 +386,20 @@
   // 报价单 / 订单 / 发货单：同一种版式。理论重量和金额用公式（WPS 也能算）
   function sheetDoc(wb, title, sheetName, info, lines, foot) {
     const ws = wb.addWorksheet(sheetName, { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
-    ws.mergeCells("A1:H1"); ws.getCell("A1").value = title; ws.getCell("A1").font = { name: "Arial", size: 18, bold: true }; ws.getCell("A1").alignment = { horizontal: "center" }; ws.getRow(1).height = 30;
+    ws.mergeCells("A1:I1"); ws.getCell("A1").value = title; ws.getCell("A1").font = { name: "Arial", size: 18, bold: true }; ws.getCell("A1").alignment = { horizontal: "center" }; ws.getRow(1).height = 30;
     info.forEach((t, i) => { const c = ws.getCell(`${i % 2 ? "E" : "A"}${2 + Math.floor(i / 2)}`); c.value = t; c.font = F });
     const h0 = 3 + Math.ceil(info.length / 2), hr = ws.getRow(h0);
-    ["序号", "型号", "长度(米)", "理论支重", "支数", "理论重量(kg)", "单价(元/吨)", "金额(元)"].forEach((h, i) => { const c = hr.getCell(i + 1); c.value = h; c.font = FH; c.fill = fill("A3122A"); c.border = BD; c.alignment = { horizontal: "center", vertical: "middle" } }); hr.height = 24;
+    ["序号", "型号", "颜色", "长度(米)", "理论支重", "支数", "理论重量(kg)", "单价(元/吨)", "金额(元)"].forEach((h, i) => { const c = hr.getCell(i + 1); c.value = h; c.font = FH; c.fill = fill("A3122A"); c.border = BD; c.alignment = { horizontal: "center", vertical: "middle" } }); hr.height = 24;
     lines.forEach((l, i) => { const r = h0 + 1 + i, row = ws.getRow(r);
-      [i + 1, l.m, +l.L, +l.w, +l.q, { formula: `D${r}/6*C${r}*E${r}`, result: kgOf(l) }, +l.price, { formula: `ROUND(F${r}/1000*G${r},2)`, result: amtOf(l) }].forEach((v, j) => { const c = row.getCell(j + 1); c.value = v; c.font = F; c.border = BD; c.alignment = { horizontal: j === 1 ? "left" : "center" } });
-      ws.getCell(`C${r}`).numFmt = "0.00"; ws.getCell(`D${r}`).numFmt = "0.000"; ws.getCell(`E${r}`).numFmt = "#,##0"; ws.getCell(`F${r}`).numFmt = "#,##0.0"; ws.getCell(`G${r}`).numFmt = "#,##0.00"; ws.getCell(`H${r}`).numFmt = "#,##0.00" });
+      [i + 1, l.m, colorName(l.color), +l.L, +l.w, +l.q, { formula: `E${r}/6*D${r}*F${r}`, result: kgOf(l) }, +l.price, { formula: `ROUND(G${r}/1000*H${r},2)`, result: amtOf(l) }].forEach((v, j) => { const c = row.getCell(j + 1); c.value = v; c.font = F; c.border = BD; c.alignment = { horizontal: j === 1 || j === 2 ? "left" : "center" } });
+      ws.getCell(`D${r}`).numFmt = "0.00"; ws.getCell(`E${r}`).numFmt = "0.000"; ws.getCell(`F${r}`).numFmt = "#,##0"; ws.getCell(`G${r}`).numFmt = "#,##0.0"; ws.getCell(`H${r}`).numFmt = "#,##0.00"; ws.getCell(`I${r}`).numFmt = "#,##0.00" });
     const tr = h0 + 1 + lines.length, a = h0 + 1, b = tr - 1;
-    ws.getCell(`A${tr}`).value = "合计"; ws.getCell(`E${tr}`).value = { formula: `SUM(E${a}:E${b})`, result: linesQ(lines) }; ws.getCell(`F${tr}`).value = { formula: `SUM(F${a}:F${b})`, result: linesKg(lines) }; ws.getCell(`H${tr}`).value = { formula: `SUM(H${a}:H${b})`, result: linesAmt(lines) };
-    for (let c = 1; c <= 8; c++) { const x = ws.getRow(tr).getCell(c); x.font = FB; x.border = BD; x.fill = fill("FBE6E3") }
-    ws.getCell(`E${tr}`).numFmt = "#,##0"; ws.getCell(`F${tr}`).numFmt = "#,##0.0"; ws.getCell(`H${tr}`).numFmt = "#,##0.00";
+    ws.getCell(`A${tr}`).value = "合计"; ws.getCell(`F${tr}`).value = { formula: `SUM(F${a}:F${b})`, result: linesQ(lines) }; ws.getCell(`G${tr}`).value = { formula: `SUM(G${a}:G${b})`, result: linesKg(lines) }; ws.getCell(`I${tr}`).value = { formula: `SUM(I${a}:I${b})`, result: linesAmt(lines) };
+    for (let c = 1; c <= 9; c++) { const x = ws.getRow(tr).getCell(c); x.font = FB; x.border = BD; x.fill = fill("FBE6E3") }
+    ws.getCell(`F${tr}`).numFmt = "#,##0"; ws.getCell(`G${tr}`).numFmt = "#,##0.0"; ws.getCell(`I${tr}`).numFmt = "#,##0.00";
     let r = tr + 2; (foot || []).forEach(t => { ws.getCell(`A${r}`).value = t; ws.getCell(`A${r}`).font = F; r++ });
     ws.getCell(`A${r}`).value = "理论重量 = 理论支重 ÷ 6 × 长度 × 支数；金额 = 理论重量 ÷ 1000 × 单价（元/吨）。"; ws.getCell(`A${r}`).font = { name: "Arial", size: 9, italic: true, color: { argb: "FF7F7F7F" } };
-    [6, 16, 10, 10, 10, 14, 13, 15].forEach((w, i) => ws.getColumn(i + 1).width = w);
+    [6, 14, 16, 9, 10, 9, 13, 13, 14].forEach((w, i) => ws.getColumn(i + 1).width = w);
     return ws;
   }
   const mmdd = d => d.slice(5).replace("-", "");
@@ -365,7 +438,7 @@
   function render() {
     for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false");
     const old = $("msg"), om = old ? [old.textContent, old.className] : null, fq = document.activeElement && document.activeElement.id === "q";
-    $("app").innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${tab === "home" ? viewHome() : tab === "cust" ? (sel ? viewCust() : viewCustList()) : (tab === "quote" || tab === "order") ? (ed ? viewEditor() : viewDocList(tab)) : tab === "acct" ? viewAcct() : viewMore()}</div>`;
+    $("app").innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${tab === "home" ? viewHome() : tab === "cust" ? (sel ? viewCust() : viewCustList()) : (tab === "quote" || tab === "order") ? (ed ? viewEditor() : viewDocList(tab)) : tab === "acct" ? viewAcct() : tab === "price" ? viewPrice() : viewMore()}</div>`;
     if (om && $("msg")) { $("msg").textContent = om[0]; $("msg").className = om[1] }
     if (ed) paintTotals();
     if (fq && $("q")) { const i = $("q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length) }
@@ -375,23 +448,27 @@
     const t = e.target;
     if (t.id === "q") { q = t.value; render(); return }
     if (ed) {
-      const tr = t.closest("tr[data-i]"); if (tr && t.dataset.f) { const l = ed.lines[+tr.dataset.i]; l[t.dataset.f] = t.dataset.f === "m" ? t.value.toUpperCase() : t.value; paintTotals(); return }
+      const tr = t.closest("tr[data-i]"); if (tr && t.dataset.f && t.dataset.f !== "color") { const l = ed.lines[+tr.dataset.i]; l[t.dataset.f] = t.dataset.f === "m" ? t.value.toUpperCase() : t.value; if (t.dataset.f === "price") l.man = true; paintTotals(); return }
       if (t.id === "e_d") ed.d = t.value; else if (t.id === "e_note") ed.note = t.value;
       else if (t.id === "lnQ") { const k = norm(t.value), box = $("lnRes"); if (!k) { box.hidden = true; return }
         const hits = catalog().filter(c => norm(c.m).includes(k)).sort((a, b) => (norm(a.m) === k ? -1 : 0) - (norm(b.m) === k ? -1 : 0) || (a.m < b.m ? -1 : a.m > b.m ? 1 : a.L - b.L)).slice(0, 40);
         box.innerHTML = hits.map(c => `<button type="button" data-spec="${esc(JSON.stringify(c))}">${esc(c.m)} · <span style="color:var(--len)">${c.L} 米</span> · <span style="color:var(--wt)">支重 ${c.w}</span>${(() => { const p = lastPrice(ed.cust, c); return p ? ` · <span class="sub">上次 ${n0(p)} 元/吨</span>` : "" })()}</button>`).join("") || `<div class="sub" style="padding:8px 10px">型号库里没有，点“手动加一行”自己填。</div>`; box.hidden = false }
     }
     if (shipEd) { if (t.dataset.sq) shipEd.q[t.dataset.sq] = t.value; else if (t.id === "sp_d") shipEd.d = t.value; else if (t.id === "sp_car") shipEd.car = t.value; else if (t.id === "sp_driver") shipEd.driver = t.value; else if (t.id === "sp_kg") shipEd.kg = t.value }
+    if (tab === "price" && stdEd) { if (t.id === "sd_billet") stdEd.billet = t.value; else if (t.dataset.scn !== undefined) stdEd.colors[+t.dataset.scn].name = t.value; else if (t.dataset.scf !== undefined) stdEd.colors[+t.dataset.scf].fee = t.value }
+    if (tab === "price" && igEd) { if (t.id === "ig_d") igEd.d = t.value; else if (t.id === "ig_p") igEd.price = t.value }
     if (payEd) { if (t.id === "py_amt") payEd.amt = t.value; else if (t.id === "py_d") payEd.d = t.value; else if (t.id === "py_way") payEd.way = t.value; else if (t.id === "py_note") payEd.note = t.value }
   });
   app.addEventListener("change", e => {
     const t = e.target;
-    if (ed && t.id === "e_cust") { ed.cust = t.value; $("e_newc_f").hidden = t.value !== "__new"; if (t.value === "__new") $("e_newc").focus(); else ed.lines.forEach(l => { if (!(+l.price > 0) && l.m) { const p = lastPrice(ed.cust, l); if (p) { l.price = p; l.hint = p } } }); if (t.value !== "__new") render() }
+    if (ed && t.id === "e_cust") { ed.cust = t.value; $("e_newc_f").hidden = t.value !== "__new"; if (t.value === "__new") { reprice(); paintTotals(); $("e_newc").focus() } else { reprice(); render() } }
+    if (ed && t.id === "e_d") { ed.d = t.value; reprice(); render() }
+    if (ed && t.dataset.f === "color") { const tr = t.closest("tr[data-i]"), l = ed.lines[+tr.dataset.i]; l.color = t.value; autoPrice(l); render() }
     if (payEd && t.id === "py_cust") payEd.cust = t.value;
   });
   app.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "lnQ") { const b = $("lnRes").querySelector("[data-spec]"); if (b) { e.preventDefault(); b.click() } } });
   app.addEventListener("click", async e => {
-    const t = e.target, b = t.closest("button, [data-go], [data-stmt]"); if (!b) return;
+    const t = e.target, b = t.closest("button, [data-go], [data-stmt], [data-pc]"); if (!b) return;
     const ds = b.dataset;
     if (ds.go) { if (ds.go === "quote" || ds.go === "order") { setTab(ds.go); openDoc(ds.go, ds.id); render() } else setTab(ds.go, ds.id); return }
     if (ds.stmt !== undefined) { setTab("acct", ds.stmt); return }
@@ -412,6 +489,7 @@
     if (ds.addBlank) { addLine(null); return }
     if (ds.spec) { addLine(JSON.parse(ds.spec)); return }
     if (ds.rm !== undefined) { ed.lines.splice(+ds.rm, 1); render(); return }
+    if (ds.auto !== undefined) { const l = ed.lines[+ds.auto]; delete l.man; delete l.hint; autoPrice(l); if (!has(l.ing)) msg("还没有当日铝锭价，不能自动算。", "err"); render(); return }
     if (ds.saveDoc) { await saveDoc(); return }
     if (ds.delDoc) { const x = ed, isQ = x.kind === "quote";
       if (!isQ && D.ship.some(s => s.order === x.id)) { msg("这个订单已经有发货记录，不能删除。要删的话先把发货撤销。", "err"); return }
@@ -435,6 +513,31 @@
     if (ds.delPay) { const p = D.pay.find(v => v.id === ds.delPay); if (!p) return; if (armDel !== "p" + p.id) { armDel = "p" + p.id; render(); return } armDel = null;
       await act([`删除收款：${custName(p.cust)} ${md(p.d)} ${yuan(p.amt)}`], () => ST.pay.del(p.id), "已删除这笔收款。"); return }
     if (ds.stmtXl) { xlStmt(ds.stmtXl); return }
+    // 价格
+    if (ds.goPrice) { setTab("price", ds.goPrice); return }
+    if (ds.pv) { pView = ds.pv; render(); return }
+    if (ds.pc) { pcEd = ds.pc; render(); window.scrollTo(0, 0); return }
+    if (ds.cancelPc) { pcEd = null; render(); return }
+    if (ds.clearPc) { document.querySelectorAll("#pc_billet,[data-pcf]").forEach(i => i.value = ""); return }
+    if (ds.savePc) { const c = custOf(ds.savePc); if (!c) return; const bv = ($("pc_billet").value || "").trim(), cf = {}; let bad = "";
+      if (bv && !(parseFloat(bv) >= 0)) bad = "胚料加工费";
+      document.querySelectorAll("[data-pcf]").forEach(i => { const v = i.value.trim(); if (!v) return; if (!(parseFloat(v) >= 0)) bad = bad || colorName(i.dataset.pcf); else cf[i.dataset.pcf] = parseFloat(v) });
+      if (bad) { msg(bad + " 要填数字。", "err"); return }
+      const billet = bv ? parseFloat(bv) : "", items = [`${c.name} 定价：胚料费 ${bv ? n0(billet) : "用标准价"}`].concat(P.colors.map(k => has(cf[k.id]) || (c.cfee && has(c.cfee[k.id])) ? `${k.name} ${has(cf[k.id]) ? n0(cf[k.id]) : "用标准价"}` : "").filter(Boolean));
+      if (await act(items, () => ST.cust.update(c.id, { billet, cfee: cf }), `已保存 ${c.name} 的定价。`)) { pcEd = null; render() } return }
+    if (ds.saveIg) { const d = igEd.d || today(), v = parseFloat(String(igEd.price).replace(/[,，\s]/g, "")); if (!(v > 0)) { msg("请填铝锭价。", "err"); return } const old = D.ingot.find(x => x.d === d);
+      if (await act([`${d} 铝锭价：${old ? n0(old.price) + " → " : ""}${n0(v)} 元/吨`, "已经存了的报价单、订单不变；以后开单按新价算"], () => ST.ingot.put({ id: d, d, price: v, t: Date.now() }), `已保存 ${md(d)} 铝锭价 ${n0(v)}。`)) { igEd = null; render() } return }
+    if (ds.delIg) { const x = D.ingot.find(v => v.id === ds.delIg); if (!x) return; if (armDel !== "i" + x.id) { armDel = "i" + x.id; render(); return } armDel = null; await act([`删除 ${x.d} 的铝锭价 ${n0(x.price)}`], () => ST.ingot.del(x.id), "已删除。"); return }
+    if (ds.addColor) { stdEd.colors.push({ id: uid(), name: "", fee: "" }); render(); const ins = document.querySelectorAll("[data-scn]"); if (ins.length) ins[ins.length - 1].focus(); return }
+    if (ds.rmColor !== undefined) { stdEd.colors.splice(+ds.rmColor, 1); render(); return }
+    if (ds.saveStd) { const bv = parseFloat(stdEd.billet); if (String(stdEd.billet).trim() && !(bv >= 0)) { msg("胚料加工费要填数字。", "err"); return }
+      const cl = []; for (const c of stdEd.colors) { const n = String(c.name || "").trim(); if (!n) continue; const f = String(c.fee).trim() ? parseFloat(c.fee) : 0; if (!(f >= 0)) { msg(`${n} 的加工费要填数字。`, "err"); return } if (cl.some(x => x.name === n) || n === RAW.name) { msg(`颜色“${n}”重复了。`, "err"); return } cl.push({ id: c.id, name: n, fee: f }) }
+      const ch = []; if ((bv || 0) !== (+P.billet || 0)) ch.push(`标准胚料加工费 ${n0(P.billet)} → ${n0(bv || 0)}`);
+      cl.forEach(c => { const o = P.colors.find(x => x.id === c.id); if (!o) ch.push(`新增颜色 ${c.name}：${n0(c.fee)}`); else if (o.name !== c.name || +o.fee !== c.fee) ch.push(`${o.name}${o.name !== c.name ? " 改名为 " + c.name : ""}：${n0(o.fee)} → ${n0(c.fee)}`) });
+      P.colors.forEach(o => { if (!cl.some(c => c.id === o.id)) ch.push(`删除颜色 ${o.name}`) });
+      if (!ch.length) { msg("没有改动。"); return }
+      if (await act(ch, async () => { await KV.set("billet", bv || 0); await KV.set("colors", cl) }, "已保存标准加工费。")) { stdEd = null; render() } return }
+    if (ds.priceXl) { xlPrice(); return }
     // 更多
     if (b.id === "mLog") { if (logList) { logList = null; render() } else { try { logList = await Cloud.boss.log(30) } catch (err) { msg("读取操作记录失败。", "err") } render() } return }
     if (b.id === "mUndo") { Cloud.boss.undoLast().then(async t2 => { await loadAll(); logList = logList ? await Cloud.boss.log(30) : null; render(); msg(t2, /^已撤销/.test(t2) ? "ok" : "err") }).catch(() => { }); return }
