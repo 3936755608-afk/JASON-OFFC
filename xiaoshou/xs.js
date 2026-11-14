@@ -316,13 +316,13 @@
     ws.mergeCells("A1:H1"); ws.getCell("A1").value = title; ws.getCell("A1").font = { name: "Arial", size: 18, bold: true }; ws.getCell("A1").alignment = { horizontal: "center" }; ws.getRow(1).height = 30;
     info.forEach((t, i) => { const c = ws.getCell(`${i % 2 ? "E" : "A"}${2 + Math.floor(i / 2)}`); c.value = t; c.font = F });
     const h0 = 3 + Math.ceil(info.length / 2), hr = ws.getRow(h0);
-    ["序号", "型号", "长度(米)", "理论支重", "支数", "理论重量(kg)", "单价(元/吨)", "金额(元)"].forEach((h, i) => { const c = hr.getCell(i + 1); c.value = h; c.font = FH; c.fill = fill("305496"); c.border = BD; c.alignment = { horizontal: "center", vertical: "middle" } }); hr.height = 24;
+    ["序号", "型号", "长度(米)", "理论支重", "支数", "理论重量(kg)", "单价(元/吨)", "金额(元)"].forEach((h, i) => { const c = hr.getCell(i + 1); c.value = h; c.font = FH; c.fill = fill("A3122A"); c.border = BD; c.alignment = { horizontal: "center", vertical: "middle" } }); hr.height = 24;
     lines.forEach((l, i) => { const r = h0 + 1 + i, row = ws.getRow(r);
       [i + 1, l.m, +l.L, +l.w, +l.q, { formula: `D${r}/6*C${r}*E${r}`, result: kgOf(l) }, +l.price, { formula: `ROUND(F${r}/1000*G${r},2)`, result: amtOf(l) }].forEach((v, j) => { const c = row.getCell(j + 1); c.value = v; c.font = F; c.border = BD; c.alignment = { horizontal: j === 1 ? "left" : "center" } });
       ws.getCell(`C${r}`).numFmt = "0.00"; ws.getCell(`D${r}`).numFmt = "0.000"; ws.getCell(`E${r}`).numFmt = "#,##0"; ws.getCell(`F${r}`).numFmt = "#,##0.0"; ws.getCell(`G${r}`).numFmt = "#,##0.00"; ws.getCell(`H${r}`).numFmt = "#,##0.00" });
     const tr = h0 + 1 + lines.length, a = h0 + 1, b = tr - 1;
     ws.getCell(`A${tr}`).value = "合计"; ws.getCell(`E${tr}`).value = { formula: `SUM(E${a}:E${b})`, result: linesQ(lines) }; ws.getCell(`F${tr}`).value = { formula: `SUM(F${a}:F${b})`, result: linesKg(lines) }; ws.getCell(`H${tr}`).value = { formula: `SUM(H${a}:H${b})`, result: linesAmt(lines) };
-    for (let c = 1; c <= 8; c++) { const x = ws.getRow(tr).getCell(c); x.font = FB; x.border = BD; x.fill = fill("D9E1F2") }
+    for (let c = 1; c <= 8; c++) { const x = ws.getRow(tr).getCell(c); x.font = FB; x.border = BD; x.fill = fill("FBE6E3") }
     ws.getCell(`E${tr}`).numFmt = "#,##0"; ws.getCell(`F${tr}`).numFmt = "#,##0.0"; ws.getCell(`H${tr}`).numFmt = "#,##0.00";
     let r = tr + 2; (foot || []).forEach(t => { ws.getCell(`A${r}`).value = t; ws.getCell(`A${r}`).font = F; r++ });
     ws.getCell(`A${r}`).value = "理论重量 = 理论支重 ÷ 6 × 长度 × 支数；金额 = 理论重量 ÷ 1000 × 单价（元/吨）。"; ws.getCell(`A${r}`).font = { name: "Arial", size: 9, italic: true, color: { argb: "FF7F7F7F" } };
@@ -350,12 +350,12 @@
       const ws = wb.addWorksheet("对账单", { pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
       ws.mergeCells("A1:F1"); ws.getCell("A1").value = "对 账 单"; ws.getCell("A1").font = { name: "Arial", size: 18, bold: true }; ws.getCell("A1").alignment = { horizontal: "center" };
       ws.getCell("A2").value = "客户：" + c.name; ws.getCell("D2").value = "截至：" + today(); ["A2", "D2"].forEach(k => ws.getCell(k).font = F);
-      const hr = ws.getRow(4); ["日期", "类型", "单号 / 说明", "应收增加(元)", "收款(元)", "余额(元)"].forEach((h, i) => { const x = hr.getCell(i + 1); x.value = h; x.font = FH; x.fill = fill("305496"); x.border = BD; x.alignment = { horizontal: "center" } });
+      const hr = ws.getRow(4); ["日期", "类型", "单号 / 说明", "应收增加(元)", "收款(元)", "余额(元)"].forEach((h, i) => { const x = hr.getCell(i + 1); x.value = h; x.font = FH; x.fill = fill("A3122A"); x.border = BD; x.alignment = { horizontal: "center" } });
       ev.forEach((e, i) => { const r = 5 + i, row = ws.getRow(r);
         [e.d, e.k === "ship" ? "发货" : "收款", e.k === "ship" ? `${e.x.no}（${linesQ(e.x.lines)} 支，${(linesKg(e.x.lines) / 1000).toFixed(3)} 吨）` : [e.x.way, e.x.note].filter(Boolean).join(" · "), e.inc || null, e.dec || null, { formula: i ? `F${r - 1}+D${r}-E${r}` : `D${r}-E${r}`, result: e.bal }].forEach((v, j) => { const x = row.getCell(j + 1); x.value = v; x.font = F; x.border = BD });
         ["D", "E", "F"].forEach(k => ws.getCell(`${k}${r}`).numFmt = "#,##0.00") });
       const tr = 5 + ev.length; ws.getCell(`A${tr}`).value = "合计"; ws.getCell(`D${tr}`).value = { formula: `SUM(D5:D${tr - 1})`, result: a.due }; ws.getCell(`E${tr}`).value = { formula: `SUM(E5:E${tr - 1})`, result: a.paid }; ws.getCell(`F${tr}`).value = { formula: `D${tr}-E${tr}`, result: a.owe };
-      for (let k = 1; k <= 6; k++) { const x = ws.getRow(tr).getCell(k); x.font = FB; x.border = BD; x.fill = fill("D9E1F2") } ["D", "E", "F"].forEach(k => ws.getCell(`${k}${tr}`).numFmt = "#,##0.00");
+      for (let k = 1; k <= 6; k++) { const x = ws.getRow(tr).getCell(k); x.font = FB; x.border = BD; x.fill = fill("FBE6E3") } ["D", "E", "F"].forEach(k => ws.getCell(`${k}${tr}`).numFmt = "#,##0.00");
       [12, 8, 40, 15, 15, 15].forEach((w, i) => ws.getColumn(i + 1).width = w);
       await shareFile(new Blob([await wb.xlsx.writeBuffer()], { type: XT }), `对账单_${safe(c.name)}_${mmdd(today())}.xlsx`); msg("已导出对账单。", "ok");
     } catch (e) { console.error(e); msg("导出失败，请再试一次。", "err") }
