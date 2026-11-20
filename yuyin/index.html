@@ -62,7 +62,14 @@ tr.flag td{background:var(--warn-bg)}tr.click{cursor:pointer}
     <div class="seg st" id="sts"><button type="button" data-s="已入库">已入库</button><button type="button" data-s="包装中">包装中</button><button type="button" data-s="刚生产">刚生产</button></div>
     <div id="ctl"></div>
     <div class="live" id="live"></div>
-    <div class="row"><label class="row sub"><input type="checkbox" id="tts" checked style="width:22px;height:22px"> 耳机播报</label><label class="row sub">语速 <input type="range" id="rate" min="0.8" max="1.6" step="0.1" value="1.2"></label><span class="sub" id="lib"></span></div>
+    <details class="sub"><summary style="font-weight:700">🔈 播报设置（声音不好听在这里换）</summary>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <div class="seg" id="fbs"><button type="button" data-fb="full">完整播报</button><button type="button" data-fb="short">只报支数</button><button type="button" data-fb="beep">叮一声</button><button type="button" data-fb="off">不出声</button></div>
+        <div class="row"><select id="voice" style="flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 8px;background:var(--panel)"></select><button type="button" class="btn" id="tryv">试听</button></div>
+        <div class="row">语速 <input type="range" id="rate" min="0.7" max="1.4" step="0.05" value="1"> 音调 <input type="range" id="pitch" min="0.7" max="1.3" step="0.05" value="1"></div>
+        <div>“只报支数”：只说“120支”。“叮一声”：正常的只响一声，有问题才说话。<br>想要更自然的声音：iPhone 设置 → 辅助功能 → 朗读内容 → 声音 → 中文（中国大陆），下载一个标着“增强”或“高音质”的声音（要几百 MB），回来刷新本页，在上面选它。</div>
+      </div></details>
+    <div class="row"><span class="sub" id="lib"></span></div>
   </div>
   <div id="cardBox"></div>
   <div class="panel">

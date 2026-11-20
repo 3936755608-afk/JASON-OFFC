@@ -17,10 +17,21 @@
 
   /* ---------- 播报 ---------- */
   let speaking = false;
-  function say(text, then) {
-    if (!$("tts").checked || !diag.tts || !text) { then && then(); return }
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = "zh-CN"; u.rate = +$("rate").value;
-      const v = speechSynthesis.getVoices().find(x => /zh[-_]CN/i.test(x.lang)); if (v) u.voice = v;
+  /* 播报方式：完整 / 只报支数 / 提示音（有问题才说话）/ 不出声；声音可以选（优先“增强”“高音质”的） */
+  let fb = LS.get("yy_fb", "full"), voiceName = LS.get("yy_voice", "");
+  const zhVoices = () => (speechSynthesis.getVoices ? speechSynthesis.getVoices() : []).filter(v => /^zh|cmn/i.test(v.lang));
+  const vScore = v => (/premium|高音质|优化/i.test(v.name) ? 30 : 0) + (/enhanced|增强/i.test(v.name) ? 20 : 0) + (/zh[-_]CN/i.test(v.lang) ? 5 : 0) + (v.localService ? 1 : 0);
+  function pickVoice() { const vs = zhVoices(); return vs.find(v => v.name === voiceName) || vs.slice().sort((a, b) => vScore(b) - vScore(a))[0] || null }
+  function paintVoices() { const vs = zhVoices().sort((a, b) => vScore(b) - vScore(a)), cur = pickVoice(); $("voice").innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}"${cur && v.name === cur.name ? " selected" : ""}>${esc(v.name)}（${esc(v.lang)}）${vScore(v) >= 20 ? " ★" : ""}</option>`).join("") : `<option>（这台手机没有中文声音）</option>`;
+    for (const b of $("fbs").children) b.setAttribute("aria-pressed", String(b.dataset.fb === fb)) }
+  // 提示音：成功“叮”一声
+  let actx = null; function beep(ok, then) { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = "sine"; o.frequency.value = ok ? 1320 : 440; g.gain.setValueAtTime(0.0001, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.25, actx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + 0.18); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + 0.2) } catch (e) { } setTimeout(() => then && then(), 260) }
+  function say(text, then, kind) {
+    if (fb === "off" || !diag.tts || !text) { then && then(); return }
+    if (fb === "beep" && kind === "ok") { beep(true, then); return }
+    if (fb === "short" && kind === "ok") text = text.replace(/^.*?，(\d+支)，已记录$/, "$1");
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = "zh-CN"; u.rate = +$("rate").value; u.pitch = +$("pitch").value;
+      const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang }
       speaking = true; let done = false; const fin = () => { if (done) return; done = true; speaking = false; then && then() };
       u.onend = fin; u.onerror = fin; setTimeout(fin, 600 + text.length * 260); speechSynthesis.speak(u) } catch (e) { speaking = false; then && then() }
   }
@@ -59,7 +70,7 @@
     alts = [].concat(alts).filter(Boolean); if (!alts.length) return; live(alts[0], true);
     // 几个候选里挑问题最少的那个
     let best = null; for (const a of alts) { const p = VP.parse(a); if (p.cmd) { best = { a, p }; break } const r = lib.resolve(p.rec); if (!best || (best.r && r.flags.length < best.r.flags.length)) best = { a, p, r } }
-    const { a, p } = best; let speak = "";
+    const { a, p } = best; let speak = "", okSpeak = false;
     // 上一条有问题（例如“请说支重”），这句只说了支重/长度/支数、没说型号 → 当作补上一条
     if (!p.cmd && p.rec && !p.rec.m && entries[0] && entries[0].flags && entries[0].flags.length && ["L", "w", "q"].some(k => p.rec[k] != null)) { p.cmd = "fix"; p.p = {}; ["L", "w", "q"].forEach(k => { if (p.rec[k] != null) p.p[k] = p.rec[k] }) }
     if (p.cmd === "fix") { const e = entries[0]; if (!e) speak = "还没有记录"; else { undoStack.push({ k: "fix", id: e.id, before: JSON.parse(JSON.stringify(e)) }); const r = lib.resolve(Object.assign({ m: e.m, L: e.L, w: e.autoW && p.p.L != null ? null : e.w, q: e.q }, p.p)); Object.assign(e, pick(r), { fixed: (e.fixed || 0) + 1, fixRaw: (e.fixRaw ? e.fixRaw + "；" : "") + a, need: e.need || !!r.flags.length, ok: !r.flags.length }); save(); showCard(e); speak = "已改，" + sayRec(e).replace(/，?已记录$/, "") } }
@@ -69,8 +80,8 @@
     else if (p.cmd === "pause") { stopRec(); speak = "已暂停" }
     else if (p.cmd === "end") { stopRec(); const n = pending().length; speak = n ? `还有${n}条要确认，确认后再结束` : `盘点结束，共${entries.length}条，正在导出`; if (!n) setTimeout(finish, 300); else markPending() }
     else if (p.cmd === "ok") { const e = entries[0]; if (e && e.need && !e.ok && !(e.m && e.L > 0 && e.w > 0 && e.q > 0)) speak = "上一条还没补全，不能确认"; else if (e && e.need && !e.ok) { e.ok = true; save(); showCard(e); speak = "已确认" } else speak = "上一条不用确认" }
-    else { const r = best.r || lib.resolve(p.rec), e = Object.assign({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: Date.now(), raw: a, alts: alts.slice(0, 3), s: status }, pick(r)); e.ms = recT0 ? Date.now() - recT0 : null; entries.unshift(e); dupCheck(e); undoStack.push({ k: "add", id: e.id }); save(); showCard(e); speak = sayRec(e) }
-    paintList(); if (mode === "cont" && want) { try { if (rec) { rec.onend = null; rec.abort() } } catch (x) { } } say(speak, afterSpeak);
+    else { const r = best.r || lib.resolve(p.rec), e = Object.assign({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: Date.now(), raw: a, alts: alts.slice(0, 3), s: status }, pick(r)); e.ms = recT0 ? Date.now() - recT0 : null; entries.unshift(e); dupCheck(e); undoStack.push({ k: "add", id: e.id }); save(); showCard(e); speak = sayRec(e); okSpeak = !e.need }
+    paintList(); if (mode === "cont" && want) { try { if (rec) { rec.onend = null; rec.abort() } } catch (x) { } } say(speak, afterSpeak, okSpeak ? "ok" : "");
   }
   // 有问题的记录 need=true：必须人工确认（点“确认”、点候选、改好，或说“确认”）才算数；没确认的不能导出成正式结果
   const pick = r => ({ m: r.m, L: r.L ?? null, w: r.w ?? null, q: r.q ?? null, kg: r.kg, flags: r.flags, cands: r.cands, wOpts: r.wOpts || null, autoW: !!r.autoW, need: !!(r.flags && r.flags.length), ok: false });
@@ -160,5 +171,10 @@
   if (speechSynthesis && speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", paintDiag);
   // iPhone 要先在点按时出一次声，后面才能自动播报
   let unlocked = false; document.addEventListener("touchend", () => { if (unlocked || !diag.tts) return; unlocked = true; try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u) } catch (e) { } }, { passive: true });
+  $("fbs").addEventListener("click", e => { const b = e.target.closest("[data-fb]"); if (!b) return; fb = b.dataset.fb; LS.set("yy_fb", fb); paintVoices(); say(fb === "beep" ? "有问题时才说话" : fb === "short" ? "120支" : "8065，120支，已记录", null, fb === "beep" ? "" : "") ; if (fb === "beep") beep(true) });
+  $("voice").addEventListener("change", e => { voiceName = e.target.value; LS.set("yy_voice", voiceName); say("8065，120支，已记录") });
+  $("tryv").addEventListener("click", () => say("8065，六米，120支，已记录"));
+  ["rate", "pitch"].forEach(id => { $(id).value = LS.get("yy_" + id, $(id).value); $(id).addEventListener("change", () => { LS.set("yy_" + id, $(id).value); say("120支，已记录") }) });
+  if (speechSynthesis && speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", paintVoices); paintVoices(); setTimeout(paintVoices, 800);
   setStatus(status); paintCtl(); paintList(); showCard(entries[0]); paintLib(); paintDiag();
 })();
