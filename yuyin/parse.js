@@ -39,6 +39,8 @@
   function clean(t) {
     t = String(t || "").replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/　/g, " ");
     t = t.replace(/[，。、；;！!？?：:,]/g, " ").replace(/\.(?!\d)/g, " ").replace(/\s+/g, " ").trim();
+    // 型号里的“-”：念成“杠/横杠/线/横线/减”，常被听成汉字（5006CX线1 → 5006CX-1）
+    t = t.replace(/([A-Za-z0-9])\s*(?:横杠|横线|中杠|中横|杠|线|减号|减|dash)\s*(?=[A-Za-z0-9零一二三四五六七八九两〇幺])/gi, "$1-");
     t = t.replace(/只重|值重|枝重|支中|只中|直重/g, "支重").replace(/(\d)\s*[只枝根条]/g, "$1支").replace(/(\d)\s*[根条只枝]$/, "$1支").replace(/公尺|M\b/gi, "米");
     return t;
   }
@@ -63,6 +65,8 @@
     }
     // 记录：支数（xx支，不是“支重”）、支重、长度、型号
     const r = { raw: String(raw || "") }; let s = " " + n + " ";
+    // “5006CX杠一三米”：杠后面的数字和长度连在一起念成了“13米”，长度不可能大于 8 米 → 拆成 -1 和 3米
+    s = s.replace(/-\s*(\d+(?:\.\d+)?)\s*米/, (m0, d) => { if (+d <= 8) return m0; const x = /^(\d+?)([2-7](?:\.\d+)?)$/.exec(d); return x ? "-" + x[1] + " " + x[2] + "米" : m0 });
     if ((m = /支重\s*(?:是|为)?\s*(\d+(?:\.\d+)?)/.exec(s))) { r.w = +m[1]; s = s.replace(m[0], " ") }
     if ((m = /(\d+(?:\.\d+)?)\s*米/.exec(s))) { r.L = +m[1]; s = s.replace(m[0], " ") }
     if ((m = /(\d+)\s*支(?!重)/.exec(s))) { r.q = +m[1]; s = s.replace(m[0], " ") }
