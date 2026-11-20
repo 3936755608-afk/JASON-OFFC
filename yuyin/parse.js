@@ -49,6 +49,7 @@
     if (/^(撤销|撤回)$/.test(t.replace(/\s/g, ""))) return { cmd: "undo" };
     if (/(删除|删掉|取消|作废)\s*上一?条/.test(t)) return { cmd: "del" };
     if (/^(暂停|停一下)$/.test(t.replace(/\s/g, ""))) return { cmd: "pause" };
+    if (/^(确认|确认上一?条|上一?条确认|没错|对的|对)$/.test(t.replace(/\s/g, ""))) return { cmd: "ok" };
     if (/^(结束|结束盘点|完成|盘点完成)$/.test(t.replace(/\s/g, ""))) return { cmd: "end" };
     let m = /(切换|改成|现在是|状态)\s*(已入库|入库|包装中|包装|刚生产|生产|在炉里|时效)/.exec(t); if (m && !/上一?条/.test(t)) return { cmd: "status", s: STATUS[m[2]] };
     if (/〖上条〗/.test(n)) {
