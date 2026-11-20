@@ -89,28 +89,57 @@
   function dupCheck(e) { const p = entries[1]; if (p && p.m === e.m && p.L === e.L && p.w === e.w && p.q === e.q && e.t - p.t < 120000) { e.flags = (e.flags || []).concat("和上一条完全一样，是不是说重复了？"); e.need = true } }
 
   /* ---------- 画面 ---------- */
+  /* ---------- 大字卡片：型号 / 长度 / 支重 / 支数 四格，点哪格就改哪格（可以手写、键盘、或对着说这一项） ---------- */
+  let slot = null, delArm = null;   // slot = {id, k}
+  const SL = { m: "型号", L: "长度(米)", w: "支重", q: "支数" };
+  function chipsFor(e, k, val) {
+    if (k === "m") return lib.search(val || e.m || "", 12).map(m => `<button type="button" data-sv="${esc(m)}">${esc(m)}</button>`).join("");
+    const sp = lib.specs(e.m);
+    if (k === "L") return [...new Set(sp.map(x => x.L))].map(L => `<button type="button" data-sv="${L}">${L} 米</button>`).join("");
+    if (k === "w") return [...new Set(sp.filter(x => e.L == null || x.L === e.L).map(x => x.w))].map(w => `<button type="button" data-sv="${w}">${w}</button>`).join("");
+    return "";
+  }
   function showCard(e) {
     if (!e) { $("cardBox").innerHTML = ""; return }
-    const fl = e.flags && e.flags.length;
-    $("cardBox").innerHTML = `<div class="card${e.need && !e.ok ? " flag" : ""}"><div class="m">${esc(e.m || "？")}</div>
-      <div><div class="k">长度(米)</div><div class="v L">${e.L ?? "？"}</div></div><div><div class="k">支重${e.autoW ? "（库里带出）" : ""}</div><div class="v W">${e.w ?? "？"}</div></div>
-      <div><div class="k">支数</div><div class="v Q">${e.q != null ? n0(e.q) : "？"}</div></div><div><div class="k">理论重量</div><div class="v">${e.kg ? n1(e.kg) + " kg" : "—"}</div></div>
+    const fl = e.flags && e.flags.length, on = k => slot && slot.id === e.id && slot.k === k ? " on" : "";
+    $("cardBox").innerHTML = `<div class="card${e.need && !e.ok ? " flag" : ""}"><div class="m tile${on("m")}" data-slot="m" data-id="${e.id}">${esc(e.m || "？")}</div>
+      <div class="tile${on("L")}" data-slot="L" data-id="${e.id}"><div class="k">长度(米)</div><div class="v L">${e.L ?? "？"}</div></div><div class="tile${on("w")}" data-slot="w" data-id="${e.id}"><div class="k">支重${e.autoW ? "（库里带出）" : ""}</div><div class="v W">${e.w ?? "？"}</div></div>
+      <div class="tile${on("q")}" data-slot="q" data-id="${e.id}"><div class="k">支数</div><div class="v Q">${e.q != null ? n0(e.q) : "？"}</div></div><div><div class="k">理论重量</div><div class="v">${e.kg ? n1(e.kg) + " kg" : "—"}</div></div>
+      ${slot && slot.id === e.id ? `<div class="slot"><div class="k">改${SL[slot.k]}：手写、打字，或点🎤只说这一项</div>
+        <input id="slotIn" value="${esc(slot.v ?? (e[slot.k] ?? ""))}" inputmode="${slot.k === "m" ? "text" : slot.k === "q" ? "numeric" : "decimal"}" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+        <div class="chips" id="slotChips">${chipsFor(e, slot.k, slot.v)}</div>
+        <div class="acts2"><button type="button" class="go" data-slot-save="1">✓ 好了</button><button type="button" data-slot-mic="1">🎤 说这一项</button><button type="button" data-slot-cancel="1">取消</button></div></div>` : ""}
       ${fl ? `<div class="flags">⚠ ${e.flags.map(esc).join("；")}</div>` : ""}
       ${fl && e.cands && e.cands.length > 1 ? `<div class="chips">${e.cands.map(c => `<button type="button" data-cm="${esc(c)}" data-id="${e.id}">${esc(c)}</button>`).join("")}</div>` : ""}
-      ${e.wOpts ? `<div class="chips">${e.wOpts.map(w => `<button type="button" data-cw="${w}" data-id="${e.id}">支重 ${w}</button>`).join("")}</div>` : ""}
-      ${e.need ? (e.ok ? `<div class="flags" style="color:var(--ok)">✓ 已人工确认</div>` : `<div class="chips"><button type="button" data-ok="${e.id}" style="background:#c00000;color:#fff;border-color:#c00000">✓ 核对过了，确认这条</button></div>`) : ""}
-      <div class="raw">听到：“${esc(e.raw)}”${e.fixRaw ? "　改：" + esc(e.fixRaw) : ""} · ${esc(e.s)}</div></div>`;
+      ${e.wOpts && !slot ? `<div class="chips">${e.wOpts.map(w => `<button type="button" data-cw="${w}" data-id="${e.id}">支重 ${w}</button>`).join("")}</div>` : ""}
+      <div class="acts2">${e.need && !e.ok ? `<button type="button" class="go" data-ok="${e.id}" style="background:#c00000;border-color:#c00000">✓ 核对过了，确认</button>` : e.need ? `<span class="flags" style="color:var(--ok)">✓ 已人工确认</span>` : ""}<button type="button" class="del" data-del="${e.id}">${delArm === e.id ? "再点一次删除" : "🗑 删除这条"}</button></div>
+      <div class="raw">听到：“${esc(e.raw)}”${e.fixRaw ? "　改：" + esc(e.fixRaw) : ""} · ${esc(e.s)} · 点上面任何一格都能改</div></div>`;
+    if (slot && slot.id === e.id) setTimeout(() => { const i = $("slotIn"); if (i && document.activeElement !== i) { i.focus(); i.select() } }, 30);
   }
+  // 改一项：其他三项不动，重新对型号库
+  function setField(e, k, v) {
+    const cur = { m: e.m, L: e.L, w: e.autoW && (k === "m" || k === "L") ? null : e.w, q: e.q }; cur[k] = v;
+    // 换了型号或长度：原来的长度/支重在新型号里没有，就清掉让库里重新带出（或提示要说）
+    if (k === "m" || k === "L") { const sp = lib.specs(cur.m); if (sp.length) { if (k === "m" && cur.L != null && !sp.some(x => x.L === cur.L)) cur.L = null; if (cur.w != null && !sp.some(x => x.w === cur.w && (cur.L == null || x.L === cur.L))) cur.w = null } }
+    const r = lib.resolve(cur); Object.assign(e, pick(r), { hand: true, need: e.need || !!r.flags.length, ok: !r.flags.length });
+    save();
+  }
+  const fieldVal = (k, txt) => { txt = String(txt || "").trim(); if (!txt) return null; if (k === "m") { const p = VP.parse(txt); const m = (p.rec && p.rec.m) || VP.clean(txt).replace(/\s+/g, "").toUpperCase(); const mt = lib.matchModel(m); return mt.best ? mt.best.m : m } const n = (VP.numify(VP.clean(txt)).match(/\d+(?:\.\d+)?/) || [])[0]; return n == null ? null : k === "q" ? parseInt(n, 10) : parseFloat(n) };
   function paintList() {
     const fl = pending().length, fx = entries.filter(e => e.fixed || e.hand).length, kg = entries.reduce((s, e) => s + (e.kg || 0), 0), qs = entries.reduce((s, e) => s + (e.q || 0), 0);
     $("stat").innerHTML = `<span>已盘 <b>${entries.length}</b> 笔<span class="sub">（测试目标 20）</span></span><span>累计 <b>${n0(qs)}</b> 支</span><span><b>${n1(kg)}</b> kg</span><span>待确认 <b class="${fl ? "bad" : "ok"}">${fl}</b></span><span class="sub">改过 ${fx}</span>`;
-    $("list").innerHTML = entries.length ? `<table><thead><tr><th>#</th><th>型号</th><th>长度</th><th>支重</th><th>支数</th><th>状态</th><th>听到的话</th></tr></thead><tbody>${entries.map((e, i) => `<tr class="click${e.need && !e.ok ? " flag" : ""}" data-ed="${e.id}"><td>${entries.length - i}</td><td class="tl"><b>${esc(e.m)}</b></td><td>${e.L ?? ""}</td><td>${e.w ?? ""}</td><td><b>${e.q != null ? n0(e.q) : ""}</b></td><td>${esc(e.s)}${e.need ? (e.ok ? " ✓" : " ⚠") : ""}</td><td class="tl" style="color:var(--muted)">${esc(e.raw)}</td></tr>`).join("")}</tbody></table>` : `<div class="sub" style="padding:14px">还没有记录。</div>`;
+    $("list").innerHTML = entries.length ? `<table><thead><tr><th>#</th><th>型号</th><th>长度</th><th>支重</th><th>支数</th><th>状态</th><th></th><th>听到的话</th></tr></thead><tbody>${entries.map((e, i) => `<tr class="click${e.need && !e.ok ? " flag" : ""}" data-ed="${e.id}"><td>${entries.length - i}</td><td class="tl"><b>${esc(e.m)}</b></td><td>${e.L ?? ""}</td><td>${e.w ?? ""}</td><td><b>${e.q != null ? n0(e.q) : ""}</b></td><td>${esc(e.s)}${e.need ? (e.ok ? " ✓" : " ⚠") : ""}</td><td><button type="button" class="x" data-del="${e.id}">${delArm === e.id ? "确认删" : "删"}</button></td><td class="tl" style="color:var(--muted)">${esc(e.raw)}</td></tr>`).join("")}</tbody></table>` : `<div class="sub" style="padding:14px">还没有记录。</div>`;
     const x = entries.find(v => v.id === editId);
     $("edBox").innerHTML = x ? `<div class="ed"><input id="e_m" value="${esc(x.m)}" style="text-transform:uppercase"><input id="e_L" inputmode="decimal" value="${x.L ?? ""}"><input id="e_w" inputmode="decimal" value="${x.w ?? ""}"><input id="e_q" inputmode="numeric" value="${x.q ?? ""}"></div><div class="row"><button type="button" class="btn" data-esave="${x.id}" style="background:var(--accent);color:var(--accent-ink)">保存</button><button type="button" class="btn" data-ecancel="1">取消</button><button type="button" class="btn danger" data-edel="${x.id}">删除这条</button></div>` : "";
   }
   function paintCtl() {
     for (const b of $("modes").children) b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
-    if (mode === "dict") $("ctl").innerHTML = `<input class="dict" id="dict" placeholder="点这里，再点键盘上的 🎤 说一句" autocomplete="off" enterkeyhint="done"><div class="sub">说完会自动记录（停 1.5 秒），也可以按“完成”。iPhone 键盘听写最稳，没网也能用。</div>`;
+    if (mode === "hand") $("ctl").innerHTML = `<div class="hf"><label class="full">型号<input id="h_m" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="next" placeholder="写或打型号"></label><div class="chips full" id="h_mc"></div>
+      <label>长度(米)<input id="h_L" class="L" inputmode="decimal" enterkeyhint="next"></label><label>支重<input id="h_w" class="W" inputmode="decimal" enterkeyhint="next"></label><div class="chips full" id="h_sc"></div>
+      <label class="full">支数<input id="h_q" inputmode="numeric" enterkeyhint="done"></label>
+      <div class="acts2"><button type="button" class="go" id="h_ok">✓ 记录这条</button><button type="button" id="h_clr">清空</button></div></div>
+      <div class="sub">想用手写：iPhone 设置 → 通用 → 键盘 → 键盘 → 添加新键盘 → 简体中文 → 手写，打字时点 🌐 切到手写。型号写几个字就会出候选，点一下；长度、支重点候选。</div>`;
+    else if (mode === "dict") $("ctl").innerHTML = `<input class="dict" id="dict" placeholder="点这里，再点键盘上的 🎤 说一句" autocomplete="off" enterkeyhint="done"><div class="sub">说完会自动记录（停 1.5 秒），也可以按“完成”。iPhone 键盘听写最稳，没网也能用。</div>`;
     else if (mode === "ptt") $("ctl").innerHTML = `<button type="button" class="big${rec ? " on" : ""}" id="go">${rec ? "正在听…说完自动记录" : "🎤 按一下，说一句"}</button>`;
     else $("ctl").innerHTML = `<button type="button" class="big${want ? " on" : ""}" id="go">${want ? "■ 正在连续听（点一下暂停）" : "🎤 开始语音盘点"}</button>`;
   }
@@ -126,8 +155,18 @@
   $("ctl").addEventListener("input", e => { if (e.target.id !== "dict") return; clearTimeout(dT); dT = setTimeout(() => { const v = e.target.value.trim(); if (v) { e.target.value = ""; handle([v]) } }, 1500) });
   $("ctl").addEventListener("keydown", e => { if (e.target.id === "dict" && e.key === "Enter") { e.preventDefault(); clearTimeout(dT); const v = e.target.value.trim(); if (v) { e.target.value = ""; handle([v]) } } });
   document.addEventListener("click", e => {
-    const b = e.target.closest("[data-cm],[data-cw],[data-ed],[data-esave],[data-ecancel],[data-edel],[data-ok]"); if (!b) return; const ds = b.dataset;
+    const b = e.target.closest("[data-cm],[data-cw],[data-ed],[data-esave],[data-ecancel],[data-edel],[data-ok],[data-slot],[data-sv],[data-slot-save],[data-slot-mic],[data-slot-cancel],[data-del],[data-hm],[data-hs]"); if (!b) return; const ds = b.dataset;
     const find = id => entries.find(x => x.id === id);
+    // 点一格改一项
+    if (ds.slot) { const x = find(ds.id); if (!x) return; if (want) { resumeAfter = true; stopRec() } slot = { id: x.id, k: ds.slot }; showCard(x); return }
+    if (ds.sv !== undefined) { const i = $("slotIn"); if (i) { i.value = ds.sv; slotSave() } return }
+    if (ds.slotSave) { slotSave(); return }
+    if (ds.slotCancel) { const x = slot && find(slot.id); slot = null; showCard(x); resume(); return }
+    if (ds.slotMic) { slotMic(); return }
+    if (ds.del) { if (delArm !== ds.del) { delArm = ds.del; showCard(find(ds.del) || entries[0]); paintList(); return } const x = find(ds.del); delArm = null; if (x) { entries = entries.filter(v => v.id !== x.id); undoStack.push({ k: "del", e: x }); save(); say("已删除") } slot = null; paintList(); showCard(entries[0]); return }
+    // 手写：点型号候选 / 点规格候选
+    if (ds.hm) { $("h_m").value = ds.hm; hSpecs(); const sp = lib.specs(ds.hm); if (sp.length === 1) { $("h_L").value = sp[0].L; $("h_w").value = sp[0].w; $("h_q").focus() } else $("h_L").focus(); return }
+    if (ds.hs) { const [L, w] = ds.hs.split("|"); $("h_L").value = L; $("h_w").value = w; $("h_q").focus(); return }
     if (ds.ok) { const x = find(ds.ok); if (!x) return; if (!x.m || !(x.L > 0) || !(x.w > 0) || !(x.q > 0)) { say("先把这条补全"); alert("这条型号、长度、支重、支数还没全，点下面列表里这一行补全后再确认。"); editId = x.id; paintList(); return } x.ok = true; save(); showCard(x); paintList(); const nx = pending()[0]; if (nx) showCard(nx); return }
     if (ds.cm) { const x = find(ds.id); if (!x) return; const r = lib.resolve({ m: ds.cm, L: x.L, w: x.autoW ? null : x.w, q: x.q }); Object.assign(x, pick(r), { hand: true, need: true, ok: !r.flags.length }); save(); showCard(x); paintList(); say(`${x.m}，${x.q || ""}支`) }
     else if (ds.cw) { const x = find(ds.id); if (!x) return; const r = lib.resolve({ m: x.m, L: x.L, w: +ds.cw, q: x.q }); Object.assign(x, pick(r), { hand: true, need: true, ok: !r.flags.length }); save(); showCard(x); paintList() }
@@ -136,6 +175,23 @@
     else if (ds.edel) { entries = entries.filter(x => x.id !== ds.edel); editId = null; save(); paintList(); showCard(entries[0]) }
     else if (ds.esave) { const x = find(ds.esave); if (!x) return; const r = lib.resolve({ m: $("e_m").value.trim().toUpperCase(), L: parseFloat($("e_L").value) || null, w: parseFloat($("e_w").value) || null, q: parseInt($("e_q").value, 10) || null }); Object.assign(x, pick(r), { hand: true, need: x.need || !!r.flags.length, ok: true }); /* 人手改过 = 人工确认 */ editId = null; save(); paintList(); showCard(x) }
   });
+  let resumeAfter = false; function resume() { if (resumeAfter && mode === "cont") { resumeAfter = false; want = true; startRec() } resumeAfter = false }
+  function slotSave() { const x = slot && entries.find(v => v.id === slot.id); if (!x) { slot = null; return } const v = fieldVal(slot.k, $("slotIn").value); if (v == null || (slot.k !== "m" && !(v > 0))) { say("没看懂，请重写"); return } setField(x, slot.k, v); const k = slot.k; slot = null; showCard(x); paintList(); say(`${SL[k].replace("(米)", "")}改成${v}${k === "q" ? "支" : ""}`, resume) }
+  function slotMic() { if (!SR) { alert("这个浏览器没有语音识别，请手写或打字。"); return } try { if (rec) { rec.onend = null; rec.abort() } } catch (e) { } const r1 = new SR(); r1.lang = "zh-CN"; r1.interimResults = false; r1.maxAlternatives = 3;
+    r1.onresult = ev => { const alts = [...ev.results[0]].map(a => a.transcript); let v = null; for (const a of alts) { v = fieldVal(slot.k, a); if (v != null) break } const i = $("slotIn"); if (i && v != null) { i.value = v; slotSave() } else say("没听清，请再说一遍") };
+    r1.onerror = ev => { diag.errors.push("单项：" + ev.error) }; try { r1.start(); live("请说" + SL[slot.k] + "…") } catch (e) { } }
+  document.addEventListener("input", e => { if (e.target.id === "slotIn" && slot) { slot.v = e.target.value; const x = entries.find(v => v.id === slot.id); if (x && $("slotChips")) $("slotChips").innerHTML = chipsFor(x, slot.k, slot.k === "m" ? e.target.value : "") } });
+  document.addEventListener("keydown", e => { if (e.target.id === "slotIn" && e.key === "Enter") { e.preventDefault(); slotSave() } });
+  // ---- 手写录入 ----
+  function hSpecs() { const m = fieldVal("m", $("h_m").value), sp = m ? lib.specs(m) : []; $("h_sc").innerHTML = sp.map(x => `<button type="button" data-hs="${x.L}|${x.w}">${x.L} 米 · ${x.w}</button>`).join("") }
+  function hSave() { const raw = ["h_m", "h_L", "h_w", "h_q"].map(id => $(id).value.trim()); if (!raw[0] && !raw[3]) return;
+    const r = lib.resolve({ m: fieldVal("m", raw[0]) || "", L: fieldVal("L", raw[1]), w: fieldVal("w", raw[2]), q: fieldVal("q", raw[3]) });
+    const e = Object.assign({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), t: Date.now(), raw: "手写：" + raw.join(" / "), s: status, hand: true }, pick(r));
+    entries.unshift(e); dupCheck(e); undoStack.push({ k: "add", id: e.id }); save(); showCard(e); paintList(); say(sayRec(e), null, e.need ? "" : "ok");
+    ["h_m", "h_L", "h_w", "h_q"].forEach(id => $(id).value = ""); $("h_mc").innerHTML = ""; $("h_sc").innerHTML = ""; $("h_m").focus() }
+  $("ctl").addEventListener("input", e => { if (e.target.id === "h_m") { const v = e.target.value; $("h_mc").innerHTML = lib.search(v, 12).map(m => `<button type="button" data-hm="${esc(m)}">${esc(m)}</button>`).join(""); hSpecs() } });
+  $("ctl").addEventListener("keydown", e => { const order = ["h_m", "h_L", "h_w", "h_q"], i = order.indexOf(e.target.id); if (i < 0 || e.key !== "Enter") return; e.preventDefault(); if (i === 0) { const c = $("h_mc").querySelector("[data-hm]"); if (c && !lib.specs(fieldVal("m", e.target.value)).length) { c.click(); return } hSpecs() } if (i < 3) $(order[i + 1]).focus(); else hSave() });
+  $("ctl").addEventListener("click", e => { if (e.target.id === "h_ok") hSave(); if (e.target.id === "h_clr") { ["h_m", "h_L", "h_w", "h_q"].forEach(id => $(id).value = ""); $("h_mc").innerHTML = ""; $("h_sc").innerHTML = ""; $("h_m").focus() } });
   $("clr").addEventListener("click", () => { if ($("clr").dataset.arm !== "1") { $("clr").dataset.arm = "1"; $("clr").textContent = "再点一次确认清空"; return } entries = []; undoStack = []; save(); $("clr").dataset.arm = ""; $("clr").textContent = "清空测试记录"; paintList(); showCard(null) });
   function markPending() { const p = pending(); if (p.length) { editId = null; showCard(p[p.length - 1]); paintList(); window.scrollTo(0, 0) } }
   $("exp").addEventListener("click", () => finish());

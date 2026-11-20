@@ -124,7 +124,10 @@
       out.kg = out.w > 0 && out.L > 0 && out.q > 0 ? out.w / 6 * out.L * out.q : null;
       return out;
     }
-    return { matchModel, resolve, size: models.length };
+    // 手写/手改用：按输入找型号（开头相同的排前面），某型号的长度和支重
+    function search(q, n) { const k = norm(q); if (!k) return []; return models.filter(g => norm(g.m).includes(k) || look(g.m).includes(look(q))).sort((a, b) => (norm(a.m).startsWith(k) ? 0 : 1) - (norm(b.m).startsWith(k) ? 0 : 1) || norm(a.m).length - norm(b.m).length || (a.m < b.m ? -1 : 1)).slice(0, n || 12).map(g => g.m) }
+    function specs(m) { const g = byM.get(norm(m)); return g ? g.specs.slice().sort((a, b) => a.L - b.L || a.w - b.w) : [] }
+    return { matchModel, resolve, search, specs, size: models.length };
   }
   const api = { cnNum, numify, clean, parse, makeLib, norm };
   if (typeof module !== "undefined") module.exports = api; else root.VP = api;
