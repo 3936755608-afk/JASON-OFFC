@@ -1,5 +1,5 @@
-const CACHE="pandian-v23";
-const FILES=["./","./index.html","./catalog.js","./template.js","./scan.js","./qd.js","./qdx.js","./qda.js","./qdbig.js","./ch.js","./exceljs.min.js","./lib/firebase-app-compat.js","./lib/firebase-auth-compat.js","./lib/firebase-firestore-compat.js","./lib/cloud.js","./manifest.webmanifest","./apple-touch-icon.png","./icon-192.png","./icon-512.png"];
+const CACHE="pandian-v24";
+const FILES=["./","./index.html","./catalog.js","./template.js","./scan.js","./qd.js","./qdx.js","./qda.js","./qdbig.js","./ch.js","./yuyin/","./yuyin/index.html","./yuyin/yy.js","./yuyin/parse.js","./exceljs.min.js","./lib/firebase-app-compat.js","./lib/firebase-auth-compat.js","./lib/firebase-firestore-compat.js","./lib/cloud.js","./manifest.webmanifest","./apple-touch-icon.png","./icon-192.png","./icon-512.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE&&k.startsWith(CACHE.replace(/[^-]*$/,""))).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener("fetch",e=>{

@@ -45,7 +45,7 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--chg:#4a3d12;--chg-ink:#ffe699;--lv-h:#4a1c20;--lv-h-ink:#ffb3b8;--lv-m:#3d3313;--lv-m-ink:#f3d98a;--lv-l:#2b2b2b;--lv-l-ink:#bbb}}
 body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 body:not([data-tab="entry"]) .wrap>*:not(header.top):not(#qd):not(#ch):not(.banner):not(dialog){display:none!important}
-body:not([data-tab="entry"]) #scanTop,body:not([data-tab="entry"]) #quickTop,body:not([data-tab="entry"]) #exportBtn{display:none}
+body:not([data-tab="entry"]) #scanTop,body:not([data-tab="entry"]) #quickTop,body:not([data-tab="entry"]) #voiceTop,body:not([data-tab="entry"]) #exportBtn{display:none}
 body[data-tab="entry"] #qd{display:none}
 body:not([data-tab="entry"]) header.top .sub:not(label){display:none}
 .qd-msg:empty{display:none}

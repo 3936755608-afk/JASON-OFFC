@@ -6,7 +6,8 @@
   const n0 = n => Number(n || 0).toLocaleString("zh-CN", { maximumFractionDigits: 0 });
   const n1 = n => Number(n || 0).toLocaleString("zh-CN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const LS = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v) } catch (e) { return d } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { } } };
-  let entries = LS.get("yy_entries", []), mode = LS.get("yy_mode", "cont"), status = LS.get("yy_status", "已入库"), undoStack = [], editId = null;
+  const APP = !!window.VP_APP, KEY = APP ? "vp_entries" + (window.CLOUD_SUFFIX || "") : "yy_entries";   // 正式盘点的草稿和测试页的分开存
+  let entries = LS.get(KEY, []), mode = LS.get("yy_mode", "cont"), status = LS.get("yy_status", "已入库"), undoStack = [], editId = null;
   let lib = VP.makeLib(window.BASE_CATALOG || []), libSrc = "基础型号库";
   const diag = { sr: !!(window.SpeechRecognition || window.webkitSpeechRecognition), standalone: !!(navigator.standalone || matchMedia("(display-mode: standalone)").matches), ua: navigator.userAgent, starts: 0, results: 0, errors: [], tts: "speechSynthesis" in window };
   function paintDiag() { $("diag").textContent = `语音识别：${diag.sr ? "有" : "没有（这个浏览器不支持）"}\n主屏幕 App 模式：${diag.standalone ? "是" : "否（在 Safari 里打开）"}\n朗读：${diag.tts ? "有" : "没有"}，中文声音 ${(speechSynthesis.getVoices ? speechSynthesis.getVoices() : []).filter(v => /zh/i.test(v.lang)).length} 个\n开始听 ${diag.starts} 次，识别到 ${diag.results} 句\n型号库：${libSrc}，${lib.size} 个型号\n最近错误：${diag.errors.slice(-6).join(" | ") || "无"}\n${diag.ua}` }
@@ -65,7 +66,7 @@
   function live(t, fin) { $("live").textContent = t || ""; $("live").className = "live" + (fin ? " final" : "") }
 
   /* ---------- 处理一句话 ---------- */
-  function save() { LS.set("yy_entries", entries) }
+  function save() { entries.forEach(e => { if (e.need && !e.why && e.flags && e.flags.length) e.why = e.flags[0].replace(/，?请.*$/, "") }); LS.set(KEY, entries) }   // why = 当初为什么要人工确认，提交时写进备注
   function handle(alts) {
     alts = [].concat(alts).filter(Boolean); if (!alts.length) return; live(alts[0], true);
     // 几个候选里挑问题最少的那个
@@ -127,7 +128,7 @@
   const fieldVal = (k, txt) => { txt = String(txt || "").trim(); if (!txt) return null; if (k === "m") { const p = VP.parse(txt); const m = (p.rec && p.rec.m) || VP.clean(txt).replace(/\s+/g, "").toUpperCase(); const mt = lib.matchModel(m); return mt.best ? mt.best.m : m } const n = (VP.numify(VP.clean(txt)).match(/\d+(?:\.\d+)?/) || [])[0]; return n == null ? null : k === "q" ? parseInt(n, 10) : parseFloat(n) };
   function paintList() {
     const fl = pending().length, fx = entries.filter(e => e.fixed || e.hand).length, kg = entries.reduce((s, e) => s + (e.kg || 0), 0), qs = entries.reduce((s, e) => s + (e.q || 0), 0);
-    $("stat").innerHTML = `<span>已盘 <b>${entries.length}</b> 笔<span class="sub">（测试目标 20）</span></span><span>累计 <b>${n0(qs)}</b> 支</span><span><b>${n1(kg)}</b> kg</span><span>待确认 <b class="${fl ? "bad" : "ok"}">${fl}</b></span><span class="sub">改过 ${fx}</span>`;
+    $("stat").innerHTML = `<span>已盘 <b>${entries.length}</b> 笔<span class="sub">（${APP ? "草稿，还没提交" : "测试目标 20"}）</span></span><span>累计 <b>${n0(qs)}</b> 支</span><span><b>${n1(kg)}</b> kg</span><span>待确认 <b class="${fl ? "bad" : "ok"}">${fl}</b></span><span class="sub">改过 ${fx}</span>`;
     $("list").innerHTML = entries.length ? `<table><thead><tr><th>#</th><th>型号</th><th>长度</th><th>支重</th><th>支数</th><th>状态</th><th></th><th>听到的话</th></tr></thead><tbody>${entries.map((e, i) => `<tr class="click${e.need && !e.ok ? " flag" : ""}" data-ed="${e.id}"><td>${entries.length - i}</td><td class="tl"><b>${esc(e.m)}</b></td><td>${e.L ?? ""}</td><td>${e.w ?? ""}</td><td><b>${e.q != null ? n0(e.q) : ""}</b></td><td>${esc(e.s)}${e.need ? (e.ok ? " ✓" : " ⚠") : ""}</td><td><button type="button" class="x" data-del="${e.id}">${delArm === e.id ? "确认删" : "删"}</button></td><td class="tl" style="color:var(--muted)">${esc(e.raw)}</td></tr>`).join("")}</tbody></table>` : `<div class="sub" style="padding:14px">还没有记录。</div>`;
     const x = entries.find(v => v.id === editId);
     $("edBox").innerHTML = x ? `<div class="ed"><input id="e_m" value="${esc(x.m)}" style="text-transform:uppercase"><input id="e_L" inputmode="decimal" value="${x.L ?? ""}"><input id="e_w" inputmode="decimal" value="${x.w ?? ""}"><input id="e_q" inputmode="numeric" value="${x.q ?? ""}"></div><div class="row"><button type="button" class="btn" data-esave="${x.id}" style="background:var(--accent);color:var(--accent-ink)">保存</button><button type="button" class="btn" data-ecancel="1">取消</button><button type="button" class="btn danger" data-edel="${x.id}">删除这条</button></div>` : "";
@@ -196,8 +197,8 @@
   function markPending() { const p = pending(); if (p.length) { editId = null; showCard(p[p.length - 1]); paintList(); window.scrollTo(0, 0) } }
   $("exp").addEventListener("click", () => finish());
   // 盘点完成：有待确认的先确认；然后导出 Excel（明细按说的顺序 + 按规格汇总 + 按状态汇总 + 测试信息）
-  async function finish() {
-    const pend = pending(); if (pend.length) { say(`还有${pend.length}条要确认`); markPending(); alert(`还有 ${pend.length} 条标黄的记录没确认。请逐条核对后点“确认这条”，再导出。`); return }
+  async function finish(after) {
+    const pend = after ? [] : pending(); if (pend.length) { say(`还有${pend.length}条要确认`); markPending(); alert(`还有 ${pend.length} 条标黄的记录没确认。请逐条核对后点“确认这条”，再导出。`); return }
     if (!entries.length) { alert("还没有记录。"); return }
     try { await new Promise((ok, bad) => { if (window.ExcelJS) return ok(); const s = document.createElement("script"); s.src = "../exceljs.min.js"; s.onload = ok; s.onerror = bad; document.head.appendChild(s) });
       const wb = new ExcelJS.Workbook(), H = { bold: true, color: { argb: "FFFFFFFF" } }, fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF305496" } };
@@ -219,7 +220,7 @@
       const ws4 = wb.addWorksheet("测试信息"); const need = list.filter(e => e.need).length, ms = list.map(e => e.ms).filter(Boolean);
       [["记录笔数", list.length], ["一次就对的", list.filter(e => !e.need && !e.fixed && !e.hand).length], ["要人工确认的", need], ["语音改过的", list.filter(e => e.fixed).length], ["手改过的", list.filter(e => e.hand).length], ["平均识别用时(秒)", ms.length ? +(ms.reduce((a, b) => a + b, 0) / ms.length / 1000).toFixed(1) : ""], ["听写方式", { cont: "连续听", ptt: "按一下说一句", dict: "键盘听写" }[mode]], ["诊断", $("diag").textContent]].forEach(r => ws4.addRow(r));
       ws4.getColumn(1).width = 18; ws4.getColumn(2).width = 90;
-      const blob = new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), name = `语音盘点_${new Date().toLocaleDateString("zh-CN").replace(/\//g, "")}.xlsx`, file = new File([blob], name, { type: blob.type });
+      const blob = new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), name = `语音盘点_${APP ? day.replace(/-/g, "") : new Date().toLocaleDateString("zh-CN").replace(/\//g, "")}.xlsx`, file = new File([blob], name, { type: blob.type });
       if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return } catch (x) { if (x.name === "AbortError") return } }
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     } catch (e) { alert("导出失败：" + e.message) }
@@ -232,5 +233,41 @@
   $("tryv").addEventListener("click", () => say("8065，六米，120支，已记录"));
   ["rate", "pitch"].forEach(id => { $(id).value = LS.get("yy_" + id, $(id).value); $(id).addEventListener("change", () => { LS.set("yy_" + id, $(id).value); say("120支，已记录") }) });
   if (speechSynthesis && speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", paintVoices); paintVoices(); setTimeout(paintVoices, 800);
+  /* ---------- 正式语音盘点：草稿 → 全部核对 → 输一次授权码提交到当天清单 ---------- */
+  const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") };
+  let day = window.VP_DAY || today();
+  if (APP) {
+    document.title = "语音盘点"; $("ttl").textContent = "🎤 语音盘点" + (window.CLOUD_SUFFIX ? "（测试版）" : "");
+    $("ttlSub").innerHTML = `<a href="${esc(window.VP_BACK)}" class="btn" style="text-decoration:none;display:inline-flex;align-items:center">← 回 PETRJASON</a> <label class="sub">盘点日期 <input type="date" id="vday" value="${day}" style="min-height:40px;border:1px solid var(--line);border-radius:8px;padding:0 8px"></label>`;
+    $("vday").addEventListener("change", e => { day = e.target.value || today(); paintSub() });
+    $("sub").hidden = false; $("exp").textContent = "导出 Excel"; $("clr").textContent = "清空草稿";
+  }
+  function paintSub() { if (!APP) return; const n = entries.length; $("sub").textContent = n ? `盘点完成 · 提交 ${n} 笔到 ${+day.slice(5, 7)}/${+day.slice(8)} 的清单` : "盘点完成 · 提交到清单" }
+  const _pl = paintList; paintList = function () { _pl(); paintSub() };
+  $("sub").addEventListener("click", submit);
+  async function submit() {
+    const pend = pending(); if (pend.length) { say(`还有${pend.length}条要确认`); markPending(); alert(`还有 ${pend.length} 条标黄的记录没确认。全部核对确认后才能提交。`); return }
+    const bad = entries.filter(e => !e.m || !(e.L > 0) || !(e.w > 0) || !(e.q > 0)); if (bad.length) { showCard(bad[0]); alert(`有 ${bad.length} 条型号、长度、支重、支数没填全，请补全。`); return }
+    if (!entries.length) { alert("还没有记录。"); return }
+    const list = entries.slice().reverse(), t0 = Date.now(), R = Cloud.store("pandian_records"), KV = Cloud.kv("pandian_kv");
+    const byS = {}; list.forEach(e => { byS[e.s] = (byS[e.s] || 0) + 1 });
+    const recs = list.map((e, i) => ({ id: t0.toString(36) + i.toString(36).padStart(3, "0") + Math.random().toString(36).slice(2, 5), d: day, m: e.m, L: +e.L, w: +e.w, q: +e.q, s: e.s, n: e.need ? "语音录入，已人工核对" + (e.why ? "（" + e.why + "）" : "") : "", p: "语音", t: t0 + i }));
+    const $b = $("sub"); $b.disabled = true; $b.textContent = "正在提交…";
+    try {
+      await Cloud.boss.confirm([`语音盘点提交到 ${day}：${recs.length} 笔，${n0(recs.reduce((s, r) => s + r.q, 0))} 支，${n1(list.reduce((s, e) => s + (e.kg || 0), 0))} kg`, Object.entries(byS).map(([k, v]) => k + " " + v + " 笔").join("，"), "提交后在 PETRJASON 的“今天的记录”里能看到，可以照常修改"]);
+      Cloud.boss.begin();
+      try {
+        // 型号库里没有的规格（已人工确认的），顺便加进型号库，下次录入下拉也有
+        let cat = []; try { cat = (await KV.get("catalog")) || [] } catch (e) { }
+        const have = new Set(cat.map(x => x.m + "|" + x.L + "|" + x.w)), add = []; recs.forEach(r => { const k = r.m + "|" + r.L + "|" + r.w; if (!have.has(k)) { have.add(k); add.push({ m: r.m, L: r.L, w: r.w }) } });
+        if (add.length && cat.length) await KV.set("catalog", cat.concat(add));
+        await R.putMany(recs);
+      } finally { Cloud.boss.end() }
+      const LK = "vp_last" + (window.CLOUD_SUFFIX || ""); LS.set(LK, entries); entries = []; undoStack = []; save(); paintList(); showCard(null);
+      say(`已提交${recs.length}条`); $b.disabled = false; paintSub();
+      if (confirm(`已提交 ${recs.length} 笔到 ${day} 的清单。\n\n要不要导出这次的 Excel？（确定 = 导出，取消 = 不导出）`)) { entries = LS.get(LK, []); try { await finish(true) } finally { entries = [] } }
+      location.href = window.VP_BACK;
+    } catch (e) { $b.disabled = false; paintSub(); if (e && (e.cancelled || e.code === "cancelled")) return; alert("没有提交成功，请检查网络后再试。草稿还在。"); console.error(e) }
+  }
   setStatus(status); paintCtl(); paintList(); showCard(entries[0]); paintLib(); paintDiag();
 })();
