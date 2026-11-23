@@ -29,11 +29,14 @@
   /* ---------- 数据 ---------- */
   const ST = { cust: Cloud.store("xs_cust"), follow: Cloud.store("xs_follow"), quote: Cloud.store("xs_quote"), order: Cloud.store("xs_order"), ship: Cloud.store("xs_ship"), pay: Cloud.store("xs_pay"), ingot: Cloud.store("xs_ingot"), prod: Cloud.store("xs_prod") };
   const D = { cust: [], follow: [], quote: [], order: [], ship: [], pay: [], ingot: [], prod: [] };
-  const KV = Cloud.kv("xs_kv"), P = { billet: 0, colors: [] };
+  const KV = Cloud.kv("xs_kv"), P = { billet: 0, colors: [], src: null };
+  // 每天看盘价的官网（默认南海铝锭价），可以在价格页改
+  const SRC0 = { name: "南海铝锭价", url: "https://www.lvdingjia.com/price/nanhai" };
+  const src = () => P.src && P.src.url ? P.src : SRC0;
   async function loadAll() {
     try { const ks = Object.keys(ST); const vs = await Promise.all(ks.map(k => ST[k].all())); ks.forEach((k, i) => D[k] = vs[i]) }
     catch (e) { console.error(e); $("banner").hidden = false; $("banner").textContent = "读取云端数据失败，请检查网络后刷新页面。" }
-    try { const [b, c] = await Promise.all([KV.get("billet"), KV.get("colors")]); P.billet = +b || 0; P.colors = Array.isArray(c) ? c : [] } catch (e) { console.error(e) }
+    try { const [b, c, sr] = await Promise.all([KV.get("billet"), KV.get("colors"), KV.get("ingotSrc")]); P.billet = +b || 0; P.colors = Array.isArray(c) ? c : []; P.src = sr || null } catch (e) { console.error(e) }
     D.cust.sort((a, b) => a.name.localeCompare(b.name, "zh"));
   }
   /* ---------- 内部单价：单价(元/吨) = 开单当天的铝锭价 + 胚料加工费 + 表面颜色加工费；胚料费、颜色费可以按客户单独定，没定的用标准价 ---------- */
@@ -102,6 +105,13 @@
   };
   const TABS = [["home", "首页"], ["cust", "客户"], ["quote", "报价"], ["order", "订单"], ["prod", "产品"], ["price", "价格"], ["acct", "账款"], ["more", "更多"]];
   $("bar").innerHTML = `<div class="in">${TABS.map(([k, t]) => `<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24">${ICON[k]}</svg>${t}</button>`).join("")}</div>`;
+  // 从粘贴的文字里找铝锭价：去掉逗号，取第一个 10000–40000 之间的数（避开日期、涨跌）
+  function pickIngot(t) { const s = String(t || "").replace(/[,，]/g, ""); const ns = (s.match(/\d+(?:\.\d+)?/g) || []).map(Number); return ns.find(n => n >= 10000 && n <= 40000) || (ns.length === 1 ? ns[0] : NaN) }
+  let srcEd = false;
+  // 看完官网回到 App：今天的盘价还没填，就切到价格页，光标放在价格框
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible" || !openedSrc) return; openedSrc = false; const ig = ingotOn(today()); if (!ig || ig.d !== today()) { if (tab !== "price") setTab("price"); setTimeout(() => { const i = $("ig_p"); if (i) i.focus() }, 200) } });
+  let openedSrc = false;
+  document.addEventListener("click", e => { if (e.target.closest && e.target.closest("[data-open-src]")) openedSrc = true });
   let tab = LS.get("xs_tab", "home"), sel = null, ed = null, armDel = null, logList = null, q = "", qf = "all", shipEd = null, payEd = null, stdEd = null, pcEd = null, pView = "fee", igEd = null;
   function setTab(t, s) { if (t !== "search" && $("gq") && $("gq").value) { $("gq").value = ""; gq = "" } tab = t; sel = s || null; ed = null; shipEd = null; payEd = null; armDel = null; stdEd = null; pcEd = t === "price" && s ? s : null; LS.set("xs_tab", t); for (const b of $("bar").querySelectorAll("button")) b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"); render(); window.scrollTo(0, 0) }
   $("bar").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) { q = ""; qf = "all"; setTab(b.dataset.tab) } });
@@ -341,7 +351,10 @@
           </tbody></table></div>` : `<div class="empty">还没有客户。</div>`}
       </section>
       <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
-        <section class="panel"><h2>当日铝锭价</h2>
+        <section class="panel"><h2>当日铝锭价 <span class="sub">来源：${esc(src().name)}</span></h2>
+          <div class="acts"><a class="btn primary" href="${esc(src().url)}" target="_blank" rel="noopener" data-open-src="1" style="text-decoration:none;display:inline-flex;align-items:center">🔗 打开${esc(src().name)}官网 看今天盘价</a><button type="button" class="btn sm" data-src-edit="1">改官网</button></div>
+          ${srcEd ? `<div class="fgrid" style="grid-template-columns:1fr 2fr"><div class="field"><label for="sr_n">名称</label><input id="sr_n" value="${esc(src().name)}"></div><div class="field"><label for="sr_u">网址</label><input id="sr_u" value="${esc(src().url)}" inputmode="url"></div></div><div class="acts"><button type="button" class="btn primary" data-src-save="1">保存官网</button><button type="button" class="btn" data-src-cancel="1">取消</button></div>` : ""}
+          ${ig && ig.d === t ? "" : `<div class="banner">今天（${md(t)}）的盘价还没填。点上面的按钮看官网，回来把价格填在下面（直接粘贴整段文字也行，会自动找出价格）。</div>`}
           <div class="fgrid" style="grid-template-columns:1fr 1fr"><div class="field"><label for="ig_d">日期</label><input id="ig_d" type="date" value="${igEd.d}"></div><div class="field"><label for="ig_p">铝锭价（元/吨）</label><input id="ig_p" inputmode="decimal" value="${esc(igEd.price)}" placeholder="${ig ? "上次 " + n0(ig.price) : "例如 20500"}"></div></div>
           <div class="acts"><button type="button" class="btn primary" data-save-ig="1">保存铝锭价</button></div>
           <div class="sub">开单时用开单当天的铝锭价（那天没填就用之前最近一天的），存进单子后就不变了。</div>
@@ -747,7 +760,11 @@
       if (bad) { msg(bad + " 要填数字。", "err"); return }
       const billet = bv ? parseFloat(bv) : "", items = [`${c.name} 定价：胚料费 ${bv ? n0(billet) : "用标准价"}`].concat(P.colors.map(k => has(cf[k.id]) || (c.cfee && has(c.cfee[k.id])) ? `${k.name} ${has(cf[k.id]) ? n0(cf[k.id]) : "用标准价"}` : "").filter(Boolean));
       if (await act(items, () => ST.cust.update(c.id, { billet, cfee: cf }), `已保存 ${c.name} 的定价。`)) { pcEd = null; render() } return }
-    if (ds.saveIg) { const d = igEd.d || today(), v = parseFloat(String(igEd.price).replace(/[,，\s]/g, "")); if (!(v > 0)) { msg("请填铝锭价。", "err"); return } const old = D.ingot.find(x => x.d === d);
+    if (ds.srcEdit) { srcEd = true; render(); return }
+    if (ds.srcCancel) { srcEd = false; render(); return }
+    if (ds.srcSave) { const n = ($("sr_n").value || "").trim() || "铝锭价官网", u = ($("sr_u").value || "").trim(); if (!/^https?:\/\//i.test(u)) { msg("网址要以 http:// 或 https:// 开头。", "err"); return }
+      if (await act([`盘价官网改成：${n}（${u}）`], () => KV.set("ingotSrc", { name: n, url: u }), "已保存官网。")) { srcEd = false; render() } return }
+    if (ds.saveIg) { const d = igEd.d || today(), v = pickIngot(igEd.price); if (!(v > 0)) { msg("请填铝锭价。", "err"); return } const old = D.ingot.find(x => x.d === d);
       if (await act([`${d} 铝锭价：${old ? n0(old.price) + " → " : ""}${n0(v)} 元/吨`, "已经存了的报价单、订单不变；以后开单按新价算"], () => ST.ingot.put({ id: d, d, price: v, t: Date.now() }), `已保存 ${md(d)} 铝锭价 ${n0(v)}。`)) { igEd = null; render() } return }
     if (ds.delIg) { const x = D.ingot.find(v => v.id === ds.delIg); if (!x) return; if (armDel !== "i" + x.id) { armDel = "i" + x.id; render(); return } armDel = null; await act([`删除 ${x.d} 的铝锭价 ${n0(x.price)}`], () => ST.ingot.del(x.id), "已删除。"); return }
     if (ds.addColor) { stdEd.colors.push({ id: uid(), name: "", fee: "" }); render(); const ins = document.querySelectorAll("[data-scn]"); if (ins.length) ins[ins.length - 1].focus(); return }
