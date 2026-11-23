@@ -6,11 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="铝型材测试">
+<meta name="apple-mobile-web-app-title" content="PETRJASON测试">
 <meta name="theme-color" content="#1f5f7a">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>铝型材管理（测试版）</title>
+<title>PETRJASON（测试版）</title>
 <style>
 /* Layout: workshop tablet tool. Left = entry slip (sticky), right = today's ledger. Stacks on phone. */
 :root{
@@ -243,6 +243,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
     </div>
     <button class="btn primary" id="scanTop" type="button">📷 拍照识别</button>
     <button class="btn primary" id="quickTop" type="button">快速填数</button>
+    <button class="btn primary" id="voiceTop" type="button">🎤 语音盘点</button>
     <button class="btn" id="exportBtn" type="button">导出 Excel</button>
     <div class="sync" id="cloudStatus"><i></i><span>连接中…</span></div>
   </header>
@@ -953,5 +954,8 @@ async function buildWorkbook(XL,recs,day){
 <script src="qdbig.js"></script>
 <script src="qd.js"></script>
 <script src="ch.js"></script>
+<script>/* 语音盘点：打开 yuyin/ 正式模式，带上当前日期；录完在那边授权一次提交到这一天，再回来 */
+document.getElementById("voiceTop").addEventListener("click",()=>{const d=document.getElementById("day").value,beta=!!window.CLOUD_SUFFIX;
+  location.href=(beta?"../yuyin/":"yuyin/")+"?app=1&d="+encodeURIComponent(d)+(beta?"&beta=1&back="+encodeURIComponent("../beta/"):"&back="+encodeURIComponent("../"))});</script>
 </body>
 </html>

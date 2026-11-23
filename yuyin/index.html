@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f5f7a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="语音盘点测试">
+<title>语音盘点测试</title>
+<style>
+/* 语音盘点测试页：只在这台手机上记（不写进车间盘点数据），用来实测识别准不准、播报会不会卡。 */
+:root{--bg:#eef1f3;--panel:#fff;--ink:#1b2328;--muted:#5d6a72;--line:#d3dade;--soft:#e4e9ec;--accent:#1f5f7a;--accent-ink:#fff;--danger:#b3261e;--warn-bg:#fff2cc;--warn-ink:#7a5800;--ok:#2f7d3b;--ok-bg:#e2efda;--len:#5b2fa8;--len-bg:#ece4fb;--wt:#b3125c;--wt-bg:#fde3ef;--f-data:"SF Mono",ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#12171a;--panel:#1b2226;--ink:#e6ecef;--muted:#9aa8b0;--line:#2f3a40;--soft:#242d32;--accent:#5fb3d4;--accent-ink:#0d1a20;--warn-bg:#3d3313;--warn-ink:#f3d98a;--ok:#b9dca4;--ok-bg:#24361c;--len:#c9b2ff;--len-bg:#2e2348;--wt:#ff9cc6;--wt-bg:#45192e;color-scheme:dark}}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font-family:"PingFang SC",system-ui,sans-serif;font-size:16px;line-height:1.45;padding:10px max(12px,env(safe-area-inset-right)) 40px max(12px,env(safe-area-inset-left))}
+button,input,select{font:inherit;color:inherit}button{cursor:pointer}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+h1{font-size:20px;margin:0}.sub{color:var(--muted);font-size:13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.seg{display:flex;gap:4px;background:var(--soft);padding:4px;border-radius:10px}
+.seg button{flex:1;border:0;background:none;border-radius:8px;min-height:44px;font-weight:700;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.seg.st button[aria-pressed="true"][data-s="已入库"]{background:#e2efda;color:#2f5d1e}.seg.st button[aria-pressed="true"][data-s="包装中"]{background:#ddebf7;color:#1f4e79}.seg.st button[aria-pressed="true"][data-s="刚生产"]{background:#fce4d6;color:#8a3b0e}
+.big{border:0;border-radius:16px;min-height:76px;font-size:22px;font-weight:800;background:var(--accent);color:var(--accent-ink);width:100%}
+.big.on{background:#c00000;color:#fff;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.8}}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;min-height:44px;padding:0 14px;font-weight:600}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.live{font-size:20px;min-height:30px;color:var(--muted);font-family:var(--f-data);overflow-wrap:anywhere}
+.live.final{color:var(--ink)}
+/* 识别结果：特大字，扫一眼就能看出对不对 */
+.card{border-radius:16px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;background:var(--panel);border:3px solid var(--ok)}
+.card.flag{border-color:#e0b000;background:var(--warn-bg)}
+.card .m{grid-column:1/-1;font-family:var(--f-data);font-size:56px;font-weight:900;line-height:1.05;letter-spacing:.02em;overflow-wrap:anywhere}
+.card .k{font-size:13px;color:var(--muted);font-weight:700}
+.card .v{font-family:var(--f-data);font-size:34px;font-weight:800;line-height:1.1}
+.card .v.L{color:var(--len)}.card .v.W{color:var(--wt)}.card .v.Q{font-size:44px}
+.card .flags{grid-column:1/-1;color:var(--warn-ink);font-weight:700;font-size:16px}
+.card .raw{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.chips{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}.chips button{border:2px solid var(--accent);background:var(--panel);border-radius:999px;min-height:44px;padding:0 14px;font-family:var(--f-data);font-size:18px;font-weight:800}
+.stat{display:flex;gap:14px;flex-wrap:wrap;font-weight:700}.stat b{font-family:var(--f-data);font-size:20px}
+table{border-collapse:collapse;width:100%;font-family:var(--f-data);font-size:14px}
+th{background:#305496;color:#fff;font-family:inherit;font-size:12px;padding:6px 4px;position:sticky;top:0}
+td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:right;white-space:nowrap}td.tl{text-align:left}
+tr.flag td{background:var(--warn-bg)}tr.click{cursor:pointer}
+.tw{max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.ed{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:6px}.ed input{min-height:48px;border:2px solid var(--accent);border-radius:10px;padding:0 8px;font-family:var(--f-data);font-size:20px;width:100%;background:var(--panel)}
+.tile{border:2px dashed transparent;border-radius:12px;padding:2px 6px;cursor:pointer}.tile:active,.tile.on{border-color:var(--accent);background:var(--soft)}
+.card .m.tile{grid-column:1/-1}
+.slot{grid-column:1/-1;background:var(--panel);border:2px solid var(--accent);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.slot input,.hf input{min-height:64px;border:3px solid var(--accent);border-radius:14px;padding:0 14px;font-family:var(--f-data);font-size:30px;font-weight:800;width:100%;background:var(--panel);text-transform:uppercase}
+.hf{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hf .full{grid-column:1/-1}.hf label{font-size:13px;color:var(--muted);font-weight:700;display:flex;flex-direction:column;gap:2px}
+.hf input.L{color:var(--len)}.hf input.W{color:var(--wt)}
+.acts2{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}.acts2 button{flex:1;min-height:52px;border-radius:12px;font-size:17px;font-weight:800;border:2px solid var(--line);background:var(--panel)}
+.acts2 .go{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.acts2 .del{color:var(--danger);border-color:var(--danger)}
+td .x{border:1px solid var(--danger);color:var(--danger);background:var(--panel);border-radius:8px;min-height:34px;padding:0 10px;font-size:13px}
+.dict{min-height:64px;border:3px solid var(--accent);border-radius:14px;padding:0 14px;font-size:22px;width:100%;background:var(--panel)}
+.diag{font-family:var(--f-data);font-size:12px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ok{color:var(--ok)}.bad{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row" id="topRow"><h1 id="ttl">语音盘点测试</h1><span class="sub" id="ttlSub">只记在这台手机上，不写进盘点数据</span></div>
+  <div class="panel">
+    <div class="sub">听写方式（三种都试一下，看哪种在车间最好用）</div>
+    <div class="seg" id="modes"><button type="button" data-mode="cont">连续听</button><button type="button" data-mode="ptt">按一下说一句</button><button type="button" data-mode="dict">键盘听写</button><button type="button" data-mode="hand">手写</button></div>
+    <div class="seg st" id="sts"><button type="button" data-s="已入库">已入库</button><button type="button" data-s="包装中">包装中</button><button type="button" data-s="刚生产">刚生产</button></div>
+    <div id="ctl"></div>
+    <div class="live" id="live"></div>
+    <details class="sub"><summary style="font-weight:700">🔈 播报设置（声音不好听在这里换）</summary>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <div class="seg" id="fbs"><button type="button" data-fb="full">完整播报</button><button type="button" data-fb="short">只报支数</button><button type="button" data-fb="beep">叮一声</button><button type="button" data-fb="off">不出声</button></div>
+        <div class="row"><select id="voice" style="flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 8px;background:var(--panel)"></select><button type="button" class="btn" id="tryv">试听</button></div>
+        <div class="row">语速 <input type="range" id="rate" min="0.7" max="1.4" step="0.05" value="1"> 音调 <input type="range" id="pitch" min="0.7" max="1.3" step="0.05" value="1"></div>
+        <div>“只报支数”：只说“120支”。“叮一声”：正常的只响一声，有问题才说话。<br>想要更自然的声音：iPhone 设置 → 辅助功能 → 朗读内容 → 声音 → 中文（中国大陆），下载一个标着“增强”或“高音质”的声音（要几百 MB），回来刷新本页，在上面选它。</div>
+      </div></details>
+    <div class="row"><span class="sub" id="lib"></span></div>
+  </div>
+  <div id="cardBox"></div>
+  <div class="panel">
+    <div class="stat" id="stat"></div>
+    <div id="edBox"></div>
+    <div class="tw" id="list"></div>
+    <div class="row"><button type="button" class="btn" id="sub" hidden style="background:#c00000;color:#fff;border-color:#c00000;min-height:52px;font-size:17px;font-weight:800">盘点完成 · 提交到清单</button><button type="button" class="btn" id="exp" style="background:var(--accent);color:var(--accent-ink);border-color:var(--accent)">盘点完成 · 导出 Excel</button><button type="button" class="btn danger" id="clr">清空测试记录</button></div>
+    <div class="sub">说法例子：“8065，六米，支重一点二五，120支”。型号加长度在型号库里只有一种支重时，可以不说支重。<br>改错：“上一条数量改成130支”“上一条长度改成5.8”“上一条型号改成8066”“删掉上一条”“撤销”。标黄的说“确认”或点“确认这条”。换状态：“切换包装中”。说“结束”= 盘点完成并导出。</div>
+  </div>
+  <details class="panel"><summary class="sub">诊断信息（有问题时截图给我）</summary><div class="diag" id="diag"></div></details>
+</div>
+<script>/* 从 PETRJASON 打开（?app=1）= 正式语音盘点，录完提交到当天清单；直接打开 = 测试页。从测试版 App 打开带 beta=1，数据用测试库 */
+(function(){const q=new URLSearchParams(location.search);window.VP_APP=q.get("app")==="1";window.VP_DAY=q.get("d")||"";window.VP_BACK=q.get("back")||"../";if(q.get("beta")==="1")window.CLOUD_SUFFIX="_beta"})();</script>
+<script src="../lib/firebase-app-compat.js"></script>
+<script src="../lib/firebase-auth-compat.js"></script>
+<script src="../lib/firebase-firestore-compat.js"></script>
+<script src="../lib/cloud.js"></script>
+<script src="../catalog.js"></script>
+<script src="parse.js"></script>
+<script src="yy.js"></script>
+</body>
+</html>
